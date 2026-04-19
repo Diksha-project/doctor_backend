@@ -21,8 +21,6 @@ import java.util.Map;
 public class GeminiService {
 
 
-	//private String apiKey = "AIzaSyB6MKZGWqVrG-9rd66VrjuYnUAUEB0y0rM";
-	private String apiKey = "AIzaSyB6MKZGWqVrG-9rd66VrjuYnUAUEB0y0rM";
 
 
 	private String model = "gemini-2.5-flash";
