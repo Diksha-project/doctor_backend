@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
 @Service
 public class GeminiServiceLatest {
 
-    private String apiKey = "AIzaSyB6MKZGWqVrG-9rd66VrjuYnUAUEB0y0rM";
+  
     private String model = "gemini-2.5-flash";
 
     private final WebClient webClient;
