@@ -1,5 +1,6 @@
 package com.doctor.clinic.DoctorClinic.AIServices;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.doctor.clinic.DoctorClinic.entity.Doctor;
@@ -25,6 +26,8 @@ public class GeminiService {
 
 	private String model = "gemini-2.5-flash";
 
+    @Value("${gemini.api.key}")
+    private String apiKey;
 	    
 	    private final WebClient webClient;
 	    private final ObjectMapper objectMapper;
