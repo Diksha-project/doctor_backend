@@ -1,6 +1,4 @@
-# Ignore application.properties
-application.properties
-src/main/resources/application.properties
+
 
 # Ignore all environment-specific properties
 *.properties
