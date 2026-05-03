@@ -24,6 +24,7 @@ private final JwtAuthenticationFilter jwtAuthenticationFilter;
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/login").permitAll()
                 .requestMatchers("/org/register").permitAll()
+                .requestMatchers("/webhook/whatsapp").permitAll()
                 .anyRequest().authenticated()
             )
             .sessionManagement(session -> session

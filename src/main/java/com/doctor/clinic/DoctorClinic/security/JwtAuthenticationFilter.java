@@ -43,7 +43,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	        
 	        String path = request.getRequestURI();
 	        
-	        if (path.equals("/api/auth/login") || path.equals("/org/register") || path.equals("/api/auth/register")) {
+	        if (path.equals("/api/auth/login") || path.equals("/org/register") || path.equals("/api/auth/register") || path.equals("/webhook/whatsapp")) {
 	              log.info("Skipping authentication for public path: {}", path);
 	              filterChain.doFilter(request, response);
 	              return;
