@@ -39,6 +39,10 @@ public class Organization {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
+	
+	@Column(name = "role")
+	@Builder.Default
+	private String role = "ADMIN"; // ORGANIZATION, ADMIN, DOCTOR (will add later)
 
 	@NotBlank(message = "Full name is required")
 	@Column(name = "owner_full_name", nullable = false)

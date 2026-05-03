@@ -12,6 +12,8 @@ import com.doctor.clinic.DoctorClinic.entity.Organization;
 public interface OrganizationRepo extends JpaRepository<Organization, Long> {
 	
 	Optional<Organization> findByOrganizationName(String organizationName);
+
+	Optional<Organization> findByOwnerEmail(String email);
 	
 	
 
