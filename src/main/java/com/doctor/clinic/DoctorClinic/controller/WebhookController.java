@@ -69,6 +69,9 @@ public class WebhookController {
              System.out.println("From: " + fromNumber + ", Message: " + messageText);
              
              // Find doctor and get AI response
+          if (doctorNumber != null && doctorNumber.length() >= 10) {
+            doctorNumber = doctorNumber.substring(doctorNumber.length() - 10);
+           }
              Doctor doctor = doctorRepo.findByPhoneNumber(doctorNumber);
              if (doctor != null) {
                  String aiResponse = aiService.generateResponse(messageText, doctor);
