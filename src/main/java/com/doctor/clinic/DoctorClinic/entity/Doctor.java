@@ -65,10 +65,26 @@ public class Doctor {
     @Column(name = "default_slot_duration_minutes")
     @Builder.Default
     private Integer defaultSlotDurationMinutes = 5;
+    
+    @Column(name = "whatsapp_phone_number_id")
+    private String whatsappPhoneNumberId;
+
+    @Column(name = "whatsapp_access_token")
+    private String whatsappAccessToken;
+
+    @Column(name = "whatsapp_number")
+    private String whatsappNumber;
+
+    @Column(name = "whatsapp_activated")
+    @Builder.Default
+    private boolean whatsappActivated = false;
+    
     @Column(updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
     
     private LocalDateTime updatedAt = LocalDateTime.now();
+    
+    
     
     @PreUpdate
     protected void onUpdate() {
@@ -78,6 +94,9 @@ public class Doctor {
     public String getFullName() {
         return lastName != null ? firstName + " " + lastName : firstName;
     }
+    
+    
+    
 
 	
 }

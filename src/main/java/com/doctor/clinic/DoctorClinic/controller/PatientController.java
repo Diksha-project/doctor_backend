@@ -32,7 +32,8 @@ public class PatientController {
 		Map<String, Object> response = new HashMap<>();
 
 		// Find doctor by WhatsApp number
-		Doctor doctor = doctorRepo.findByPhoneNumber(request.getWhatsappNumber());
+		System.out.println(request.getWhatsappNumber());
+		Doctor doctor = doctorRepo.findByPhoneNumber("8889965289");
 
 		if (doctor == null) {
 			response.put("success", false);
