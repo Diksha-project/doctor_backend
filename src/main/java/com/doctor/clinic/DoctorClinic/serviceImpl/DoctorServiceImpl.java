@@ -1,6 +1,7 @@
 package com.doctor.clinic.DoctorClinic.serviceImpl;
 
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,7 +14,10 @@ import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
 import com.doctor.clinic.DoctorClinic.repo.OrganizationRepo;
 import com.doctor.clinic.DoctorClinic.request.DoctorRegisterRequest;
 import com.doctor.clinic.DoctorClinic.request.WhatsAppBusinessActivateRequest;
+import com.doctor.clinic.DoctorClinic.response.DoctorResponse;
 import com.doctor.clinic.DoctorClinic.service.DoctorService;
+
+import jakarta.validation.Valid;
 
 @Service
 public class DoctorServiceImpl implements DoctorService {
@@ -112,5 +116,35 @@ public class DoctorServiceImpl implements DoctorService {
 		// Step 4: Return response
 		return Map.of("success", true, "message", "WhatsApp number activated successfully", "phoneNumberId",
 				phoneNumberId, "phoneNumber", phoneNumber, "doctorId", doctorId);
+	}
+
+	@Override
+	public DoctorResponse getDoctorDetailsByID(Long doctorId) {
+
+	    Doctor doctor = doctorRepo.findById(doctorId)
+	            .orElseThrow(() -> new RuntimeException("Doctor not found"));
+
+	    return DoctorResponse.builder()
+	            .id(doctor.getId())
+	            .firstName(doctor.getFirstName())
+	            .lastName(doctor.getLastName())
+	            .registrationNumber(doctor.getRegistrationNumber())
+	            .qualification(doctor.getQualification())
+	            .specialization(doctor.getSpecialization())
+	            .experienceYears(doctor.getExperienceYears())
+	            .phoneNumber(doctor.getPhoneNumber())
+	            .email(doctor.getEmail())
+	            .consultationFee(doctor.getConsultationFee())
+	            .consultationHours(doctor.getConsultationHours())
+	            .status(doctor.getStatus())
+	            .defaultSlotDurationMinutes(doctor.getDefaultSlotDurationMinutes())
+	            .whatsappPhoneNumberId(doctor.getWhatsappPhoneNumberId())
+	            .whatsappNumber(doctor.getWhatsappNumber())
+	            .whatsappActivated(doctor.isWhatsappActivated())
+	            .createdAt(doctor.getCreatedAt())
+	            .updatedAt(doctor.getUpdatedAt())
+	            .organizationId(doctor.getOrganization().getId())
+	            .organizationName(doctor.getOrganization().getOrganizationName())
+	            .build();
 	}
 }

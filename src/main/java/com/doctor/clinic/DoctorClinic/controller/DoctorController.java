@@ -6,6 +6,8 @@ import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.doctor.clinic.DoctorClinic.request.DoctorRegisterRequest;
 import com.doctor.clinic.DoctorClinic.request.PatientMsgRequest;
 import com.doctor.clinic.DoctorClinic.request.WhatsAppBusinessActivateRequest;
+import com.doctor.clinic.DoctorClinic.response.DoctorResponse;
 import com.doctor.clinic.DoctorClinic.service.DoctorService;
 
 import jakarta.validation.Valid;
@@ -25,6 +28,16 @@ public class DoctorController {
 	
 	@Autowired
 	private DoctorService doctorService;
+	
+	
+	@GetMapping("/{doctorId}/details")
+	public ResponseEntity<DoctorResponse> getDoctorDetails(
+	        @PathVariable Long doctorId) {
+
+	    DoctorResponse response = doctorService.getDoctorDetailsByID(doctorId);
+
+	    return ResponseEntity.ok(response);
+	}
 	
 	@PostMapping("/add")
 	ResponseEntity<String> registerDoctor( @Valid @RequestBody DoctorRegisterRequest doctorRequest){
