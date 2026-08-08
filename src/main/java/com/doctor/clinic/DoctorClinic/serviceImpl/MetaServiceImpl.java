@@ -132,7 +132,10 @@ public class MetaServiceImpl implements MetaService {
     private String getWabaId(String accessToken) {
 
         HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(accessToken);
+
+        String appAccessToken = appId + "|" + appSecret;
+
+        headers.setBearerAuth(appAccessToken);
 
         HttpEntity<Void> entity =
                 new HttpEntity<>(headers);
@@ -157,7 +160,8 @@ public class MetaServiceImpl implements MetaService {
 
             System.out.println("========== DEBUG TOKEN ==========");
             System.out.println("HTTP STATUS = " + response.getStatusCode());
-            System.out.println("RESPONSE = " + response.getBody());
+            System.out.println("DEBUG TOKEN RESPONSE = "
+                    + response.getBody());
 
             JsonNode body = response.getBody();
 
@@ -169,11 +173,12 @@ public class MetaServiceImpl implements MetaService {
             JsonNode granularScopes =
                     body.path("data").path("granular_scopes");
 
-            if (!granularScopes.isArray() || granularScopes.isEmpty()) {
+            if (!granularScopes.isArray()
+                    || granularScopes.isEmpty()) {
 
                 throw new RuntimeException(
                         "Meta debug_token response does not contain granular_scopes. "
-                                + "Response = " + body);
+                        + "Response = " + body);
             }
 
             for (JsonNode scope : granularScopes) {
@@ -183,12 +188,14 @@ public class MetaServiceImpl implements MetaService {
                 JsonNode targetIds =
                         scope.path("target_ids");
 
-                if (targetIds.isArray() && !targetIds.isEmpty()) {
+                if (targetIds.isArray()
+                        && !targetIds.isEmpty()) {
 
                     String wabaId =
                             targetIds.get(0).asText();
 
-                    System.out.println("WABA ID = " + wabaId);
+                    System.out.println(
+                            "WABA ID = " + wabaId);
 
                     return wabaId;
                 }
@@ -199,15 +206,16 @@ public class MetaServiceImpl implements MetaService {
 
         } catch (Exception e) {
 
-            System.err.println("========== GET WABA ID FAILED ==========");
+            System.err.println(
+                    "========== GET WABA ID FAILED ==========");
+
             e.printStackTrace();
 
             throw new RuntimeException(
                     "Failed to get WABA ID: "
                             + e.getMessage(), e);
         }
-    }
-    
+    }    
     private PhoneNumberResponse getPhoneNumber(
             String accessToken,
             String wabaId) {
