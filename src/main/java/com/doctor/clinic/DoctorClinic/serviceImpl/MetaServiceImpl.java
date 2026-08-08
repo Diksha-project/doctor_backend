@@ -131,14 +131,7 @@ public class MetaServiceImpl implements MetaService {
     
     private String getWabaId(String accessToken) {
 
-        HttpHeaders headers = new HttpHeaders();
-
         String appAccessToken = appId + "|" + appSecret;
-
-        headers.setBearerAuth(appAccessToken);
-
-        HttpEntity<Void> entity =
-                new HttpEntity<>(headers);
 
         String url =
                 "https://graph.facebook.com/"
@@ -147,23 +140,23 @@ public class MetaServiceImpl implements MetaService {
 
         UriComponentsBuilder builder =
                 UriComponentsBuilder.fromHttpUrl(url)
-                        .queryParam("input_token", accessToken);
+                        .queryParam("input_token", accessToken)
+                        .queryParam("access_token", appAccessToken);
 
         try {
 
             ResponseEntity<JsonNode> response =
-                    restTemplate.exchange(
+                    restTemplate.getForEntity(
                             builder.toUriString(),
-                            HttpMethod.GET,
-                            entity,
                             JsonNode.class);
 
             System.out.println("========== DEBUG TOKEN ==========");
             System.out.println("HTTP STATUS = " + response.getStatusCode());
-            System.out.println("DEBUG TOKEN RESPONSE = "
-                    + response.getBody());
+            System.out.println("RESPONSE = " + response.getBody());
 
             JsonNode body = response.getBody();
+
+         
 
             if (body == null) {
                 throw new RuntimeException(
