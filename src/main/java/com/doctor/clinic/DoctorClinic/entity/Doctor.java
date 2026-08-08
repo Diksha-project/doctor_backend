@@ -39,6 +39,18 @@ public class Doctor {
     
     private Integer experienceYears;
     
+  
+
+    @Column(name = "whatsapp_access_token", columnDefinition = "TEXT")
+    private String whatsappAccessToken;
+
+    @Column(name = "whatsapp_number")
+    private String whatsappNumber;
+
+    @Column(name = "whatsapp_activated")
+    @Builder.Default
+    private boolean whatsappActivated = false;
+    
    
 	@NotBlank(message = "Mobile number is required")
 	@Pattern(regexp = "^[6-9]\\d{9}$", message = "Invalid Indian mobile number")
@@ -66,18 +78,11 @@ public class Doctor {
     @Builder.Default
     private Integer defaultSlotDurationMinutes = 5;
     
+
+    
     @Column(name = "whatsapp_phone_number_id")
     private String whatsappPhoneNumberId;
-
-    @Column(name = "whatsapp_access_token")
-    private String whatsappAccessToken;
-
-    @Column(name = "whatsapp_number")
-    private String whatsappNumber;
-
-    @Column(name = "whatsapp_activated")
-    @Builder.Default
-    private boolean whatsappActivated = false;
+    
     
     @Column(updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
