@@ -39,6 +39,8 @@ public class WebhookController {
  public String verifyWebhook(@RequestParam("hub.mode") String mode,
                              @RequestParam("hub.verify_token") String token,
                              @RequestParam("hub.challenge") String challenge) {
+	 
+	 System.out.println("inside /webhook/whatsapp");
      if ("subscribe".equals(mode) && VERIFY_TOKEN.equals(token)) {
          return challenge;
      }
