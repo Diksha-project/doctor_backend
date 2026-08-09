@@ -16,16 +16,28 @@ public class MetaController {
 	
     private final MetaService metaService;
 
+//    @PostMapping("/connect")
+//    public ResponseEntity<?> connect(
+//            @RequestBody ConnectRequest request) {
+//
+//        Authentication authentication =
+//                SecurityContextHolder.getContext().getAuthentication();
+//
+//        String email = authentication.getPrincipal().toString();
+//
+//        metaService.connectDoctor(email, request.getCode());
+//
+//        return ResponseEntity.ok("WhatsApp Connected Successfully");
+//    }
+    
     @PostMapping("/connect")
     public ResponseEntity<?> connect(
             @RequestBody ConnectRequest request) {
 
-        Authentication authentication =
-                SecurityContextHolder.getContext().getAuthentication();
-
-        String email = authentication.getPrincipal().toString();
-
-        metaService.connectDoctor(email, request.getCode());
+        metaService.connectDoctor(
+                request.getDoctorId(),
+                request.getCode()
+        );
 
         return ResponseEntity.ok("WhatsApp Connected Successfully");
     }

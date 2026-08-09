@@ -1,5 +1,8 @@
 package com.doctor.clinic.DoctorClinic.serviceImpl;
 
+import java.util.Optional;
+
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -13,7 +16,6 @@ import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
 import com.doctor.clinic.DoctorClinic.response.PhoneNumberResponse;
 import com.doctor.clinic.DoctorClinic.service.MetaService;
 import com.fasterxml.jackson.databind.JsonNode;
-import org.springframework.beans.factory.annotation.Value;
 
 import lombok.RequiredArgsConstructor;
 
@@ -34,49 +36,94 @@ public class MetaServiceImpl implements MetaService {
     @Value("${facebook.graph-version}")
     private String version;
 
+
     @Override
-    public void connectDoctor(String email, String code) {
+    public void connectDoctor(Long doctorId, String code) {
 
         System.out.println("=================================");
         System.out.println("META CONNECT STARTED");
-        System.out.println("EMAIL = " + email);
+        System.out.println("DOCTOR ID = " + doctorId);
         System.out.println("CODE PRESENT = "
                 + (code != null && !code.isBlank()));
         System.out.println("=================================");
 
-        Doctor doctor = doctorRepo.findByEmail(email);
 
-        if (doctor == null) {
+        // STEP 1: Find doctor using ID
+        Optional<Doctor> doctorOptional =
+                doctorRepo.findById(doctorId);
+
+        if (doctorOptional.isEmpty()) {
             throw new RuntimeException(
-                    "Doctor not found for email: " + email);
+                    "Doctor not found with ID: " + doctorId);
         }
 
-        System.out.println("STEP 1: Doctor found");
+        Doctor doctor = doctorOptional.get();
 
+        System.out.println("STEP 1: Doctor found");
+        System.out.println("Doctor ID = " + doctor.getId());
+        System.out.println("Doctor Name = "
+                + doctor.getFirstName() + " "
+                + doctor.getLastName());
+        System.out.println("Doctor Email = "
+                + doctor.getEmail());
+
+
+        // STEP 2: Exchange Meta authorization code
         String accessToken = exchangeCode(code);
 
         System.out.println("STEP 2: Access token received");
 
+
+        // STEP 3: Get WABA ID
         String wabaId = getWabaId(accessToken);
 
-        System.out.println("STEP 3: WABA ID received = " + wabaId);
+        System.out.println(
+                "STEP 3: WABA ID received = " + wabaId);
 
+
+        // STEP 4: Get WhatsApp phone number
         PhoneNumberResponse phone =
                 getPhoneNumber(accessToken, wabaId);
 
-        System.out.println("STEP 4: Phone number received");
-        System.out.println("Phone ID = " + phone.getId());
+        System.out.println(
+                "STEP 4: Phone number received");
 
+        System.out.println(
+                "Phone ID = " + phone.getId());
+
+        System.out.println(
+                "Phone Number = "
+                + phone.getDisplayPhoneNumber());
+
+
+        // STEP 5: Save WhatsApp details against THIS doctor
         doctor.setWhatsappAccessToken(accessToken);
-        doctor.setWhatsappPhoneNumberId(phone.getId());
-        doctor.setWhatsappNumber(phone.getDisplayPhoneNumber());
+
+        doctor.setWhatsappPhoneNumberId(
+                phone.getId());
+
+        doctor.setWhatsappNumber(
+                phone.getDisplayPhoneNumber());
+
         doctor.setWhatsappActivated(true);
 
         doctorRepo.save(doctor);
 
-        System.out.println("STEP 5: Doctor saved successfully");
-        System.out.println("META CONNECT COMPLETED");
+
+        System.out.println(
+                "STEP 5: Doctor saved successfully");
+
+        System.out.println(
+                "Doctor ID = " + doctor.getId());
+
+        System.out.println(
+                "Doctor Email = " + doctor.getEmail());
+
+        System.out.println(
+                "META CONNECT COMPLETED");
     }
+
+
     private String exchangeCode(String code) {
 
         String url =
@@ -84,11 +131,25 @@ public class MetaServiceImpl implements MetaService {
                         + version
                         + "/oauth/access_token";
 
-        System.out.println("========== META EXCHANGE CODE ==========");
-        System.out.println("Graph Version = " + version);
-        System.out.println("App ID present = " + (appId != null && !appId.isBlank()));
-        System.out.println("App Secret present = " + (appSecret != null && !appSecret.isBlank()));
-        System.out.println("Code present = " + (code != null && !code.isBlank()));
+
+        System.out.println(
+                "========== META EXCHANGE CODE ==========");
+
+        System.out.println(
+                "Graph Version = " + version);
+
+        System.out.println(
+                "App ID present = "
+                        + (appId != null && !appId.isBlank()));
+
+        System.out.println(
+                "App Secret present = "
+                        + (appSecret != null && !appSecret.isBlank()));
+
+        System.out.println(
+                "Code present = "
+                        + (code != null && !code.isBlank()));
+
 
         UriComponentsBuilder builder =
                 UriComponentsBuilder.fromHttpUrl(url)
@@ -96,6 +157,7 @@ public class MetaServiceImpl implements MetaService {
                         .queryParam("client_secret", appSecret)
                         .queryParam("code", code);
 
+
         try {
 
             ResponseEntity<JsonNode> response =
@@ -103,45 +165,76 @@ public class MetaServiceImpl implements MetaService {
                             builder.toUriString(),
                             JsonNode.class);
 
-            System.out.println("Meta exchange HTTP status = "
-                    + response.getStatusCode());
 
-            System.out.println("Meta exchange response = "
-                    + response.getBody());
+            System.out.println(
+                    "Meta exchange HTTP status = "
+                            + response.getStatusCode());
+
+            System.out.println(
+                    "Meta exchange response = "
+                            + response.getBody());
+
 
             JsonNode body = response.getBody();
 
-            if (body == null || body.path("access_token").isMissingNode()) {
+
+            if (body == null
+                    || body.path("access_token").isMissingNode()) {
+
                 throw new RuntimeException(
-                        "Meta did not return access_token. Response = " + body);
+                        "Meta did not return access_token. "
+                        + "Response = " + body);
             }
 
-            return body.path("access_token").asText();
+
+            return body
+                    .path("access_token")
+                    .asText();
+
 
         } catch (Exception e) {
 
-            System.err.println("========== META EXCHANGE FAILED ==========");
+            System.err.println(
+                    "========== META EXCHANGE FAILED ==========");
+
             e.printStackTrace();
 
             throw new RuntimeException(
                     "Failed to exchange Meta authorization code: "
-                            + e.getMessage(), e);
+                            + e.getMessage(),
+                    e);
         }
     }
-    
+
+
     private String getWabaId(String accessToken) {
 
-        String appAccessToken = appId + "|" + appSecret;
+        /*
+         * App Access Token
+         *
+         * Format:
+         * APP_ID|APP_SECRET
+         */
+        String appAccessToken =
+                appId + "|" + appSecret;
+
 
         String url =
                 "https://graph.facebook.com/"
                         + version
                         + "/debug_token";
 
+
         UriComponentsBuilder builder =
-                UriComponentsBuilder.fromHttpUrl(url)
-                        .queryParam("input_token", accessToken)
-                        .queryParam("access_token", appAccessToken);
+                UriComponentsBuilder
+                        .fromHttpUrl(url)
+                        .queryParam(
+                                "input_token",
+                                accessToken)
+                        .queryParam(
+                                "access_token",
+                                appAccessToken);
+
 
         try {
 
@@ -150,52 +243,79 @@ public class MetaServiceImpl implements MetaService {
                             builder.toUriString(),
                             JsonNode.class);
 
-            System.out.println("========== DEBUG TOKEN ==========");
-            System.out.println("HTTP STATUS = " + response.getStatusCode());
-            System.out.println("RESPONSE = " + response.getBody());
 
-            JsonNode body = response.getBody();
+            System.out.println(
+                    "========== DEBUG TOKEN ==========");
 
-         
+            System.out.println(
+                    "HTTP STATUS = "
+                            + response.getStatusCode());
+
+            System.out.println(
+                    "RESPONSE = "
+                            + response.getBody());
+
+
+            JsonNode body =
+                    response.getBody();
+
 
             if (body == null) {
+
                 throw new RuntimeException(
                         "Empty response from Meta debug_token");
             }
 
+
+            JsonNode data =
+                    body.path("data");
+
+
             JsonNode granularScopes =
-                    body.path("data").path("granular_scopes");
+                    data.path("granular_scopes");
+
 
             if (!granularScopes.isArray()
                     || granularScopes.isEmpty()) {
 
                 throw new RuntimeException(
-                        "Meta debug_token response does not contain granular_scopes. "
+                        "Meta debug_token response does not "
+                        + "contain granular_scopes. "
                         + "Response = " + body);
             }
 
+
             for (JsonNode scope : granularScopes) {
 
-                System.out.println("SCOPE = " + scope);
+                System.out.println(
+                        "SCOPE = " + scope);
+
 
                 JsonNode targetIds =
                         scope.path("target_ids");
+
 
                 if (targetIds.isArray()
                         && !targetIds.isEmpty()) {
 
                     String wabaId =
-                            targetIds.get(0).asText();
+                            targetIds
+                                    .get(0)
+                                    .asText();
+
 
                     System.out.println(
                             "WABA ID = " + wabaId);
+
 
                     return wabaId;
                 }
             }
 
+
             throw new RuntimeException(
                     "No WABA ID found in Meta debug_token response");
+
 
         } catch (Exception e) {
 
@@ -206,18 +326,26 @@ public class MetaServiceImpl implements MetaService {
 
             throw new RuntimeException(
                     "Failed to get WABA ID: "
-                            + e.getMessage(), e);
+                            + e.getMessage(),
+                    e);
         }
-    }    
+    }
+
+
     private PhoneNumberResponse getPhoneNumber(
             String accessToken,
             String wabaId) {
 
-        HttpHeaders headers = new HttpHeaders();
+
+        HttpHeaders headers =
+                new HttpHeaders();
+
         headers.setBearerAuth(accessToken);
+
 
         HttpEntity<Void> entity =
                 new HttpEntity<>(headers);
+
 
         String url =
                 "https://graph.facebook.com/"
@@ -225,6 +353,7 @@ public class MetaServiceImpl implements MetaService {
                         + "/"
                         + wabaId
                         + "/phone_numbers";
+
 
         try {
 
@@ -235,44 +364,76 @@ public class MetaServiceImpl implements MetaService {
                             entity,
                             JsonNode.class);
 
-            System.out.println("========== PHONE NUMBERS ==========");
-            System.out.println("WABA ID = " + wabaId);
-            System.out.println("HTTP STATUS = " + response.getStatusCode());
-            System.out.println("RESPONSE = " + response.getBody());
+
+            System.out.println(
+                    "========== PHONE NUMBERS ==========");
+
+            System.out.println(
+                    "WABA ID = " + wabaId);
+
+            System.out.println(
+                    "HTTP STATUS = "
+                            + response.getStatusCode());
+
+            System.out.println(
+                    "RESPONSE = "
+                            + response.getBody());
+
+
+            if (response.getBody() == null) {
+
+                throw new RuntimeException(
+                        "Empty response from Meta");
+            }
+
 
             JsonNode data =
-                    response.getBody().path("data");
+                    response.getBody()
+                            .path("data");
 
-            if (!data.isArray() || data.isEmpty()) {
+
+            if (!data.isArray()
+                    || data.isEmpty()) {
 
                 throw new RuntimeException(
                         "Meta returned no WhatsApp phone numbers. "
-                                + "Response = " + response.getBody());
+                        + "Response = "
+                        + response.getBody());
             }
 
-            JsonNode phone = data.get(0);
+
+            JsonNode phone =
+                    data.get(0);
+
 
             PhoneNumberResponse p =
                     new PhoneNumberResponse();
 
+
             p.setId(
-                    phone.path("id").asText()
-            );
+                    phone.path("id").asText());
+
 
             p.setDisplayPhoneNumber(
-                    phone.path("display_phone_number").asText()
-            );
+                    phone.path(
+                            "display_phone_number")
+                            .asText());
+
 
             return p;
 
+
         } catch (Exception e) {
 
-            System.err.println("========== GET PHONE NUMBER FAILED ==========");
+            System.err.println(
+                    "========== GET PHONE NUMBER FAILED ==========");
+
             e.printStackTrace();
 
             throw new RuntimeException(
                     "Failed to get WhatsApp phone number: "
-                            + e.getMessage(), e);
+                            + e.getMessage(),
+                    e);
         }
     }
 }

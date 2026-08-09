@@ -6,5 +6,10 @@ import lombok.Data;
 public class ConnectRequest {
 	
 	 private String code;
+	 
+	 private Long doctorId;
+
+	 
+	 
 
 }
