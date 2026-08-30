@@ -16,6 +16,8 @@ import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.util.Optional;
+
 //WebhookController.java
 @RestController
 @RequestMapping("/webhook")
@@ -76,18 +78,45 @@ public class WebhookController {
              
              // Find doctor and get AI response
              System.out.println(fromNumber);
-             Doctor doctor = doctorRepo.findByPhoneNumber(doctorNumber);
-             if (doctor != null) {
-            	 System.out.println("Calling AI service...");
-                 String aiResponse = aiService.generateResponse(messageText, doctor);
-                 System.out.println("Calling AI service completed...");
-                 String testNumber = "919584352846";
-                 whatsAppService.sendMessage(testNumber, aiResponse);
-                 //whatsAppService.sendMessage(fromNumber, aiResponse);
-                 System.out.println("sending mest to user whatspp");
-             }else{
-            	 System.out.println("doctor not presnt");
-             }
+             
+             
+             Optional<Doctor> doctorOptional =
+            	        doctorRepo.findByWhatsappNumber(doctorNumber);
+
+            	if (doctorOptional.isPresent()) {
+
+            	    Doctor doctor = doctorOptional.get();
+
+            	    System.out.println("Doctor found: " + doctor.getFullName());
+
+            	    String aiResponse =
+            	            aiService.generateResponse(messageText, doctor);
+
+            	    whatsAppService.sendMessage(
+            	            fromNumber,
+            	            aiResponse
+            	    );
+
+            	    System.out.println("Response sent to patient");
+
+            	} else {
+
+            	    System.out.println(
+            	            "Doctor not found for WhatsApp number: "
+            	            + doctorNumber
+            	    );
+            	}
+//             if (doctor != null) {
+//            	 System.out.println("Calling AI service...");
+//                 String aiResponse = aiService.generateResponse(messageText, doctor);
+//                 System.out.println("Calling AI service completed...");
+//                 String testNumber = "919584352846";
+//                 whatsAppService.sendMessage(testNumber, aiResponse);
+//                 //whatsAppService.sendMessage(fromNumber, aiResponse);
+//                 System.out.println("sending mest to user whatspp");
+//             }else{
+//            	 System.out.println("doctor not presnt");
+//             }
          }
          
      } catch (Exception e) {
