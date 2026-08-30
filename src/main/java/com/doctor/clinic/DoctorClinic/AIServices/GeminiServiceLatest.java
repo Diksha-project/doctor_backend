@@ -29,12 +29,12 @@ import java.util.stream.Collectors;
 @Service
 public class GeminiServiceLatest {
 
-    private static final String MODEL = "gemini-2.5-flash";
+	private static final String MODEL = "gemini-3.6-flash";
 
-    private static final String GEMINI_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            + MODEL
-            + ":generateContent";
+	private static final String GEMINI_URL =
+	        "https://generativelanguage.googleapis.com/v1beta/models/"
+	        + MODEL
+	        + ":generateContent";
 
     @Value("${gemini.api.key}")
     private String apiKey;
