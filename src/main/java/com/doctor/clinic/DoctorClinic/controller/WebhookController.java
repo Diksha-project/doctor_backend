@@ -25,8 +25,11 @@ public class WebhookController {
  // This value MUST match the one you set in the Meta Dashboard.
  private static final String VERIFY_TOKEN = "EAANNWLz8YiMBRVqoIlPCwqc7MwYTcX6N2NnBhOhfyIODvKL5ncdsqaphpiOQUKYh8Q7DsS9WdKoZCUx5OiIZADZBzJkKQGIsDHCCZBiZA9d3FuZCEZBnsC8zsK1vlZBnKSMZCZCSj4RZC1T2ZAMX3z9J4DldYeflhJyleK2fMNZBLwh5Yjpy9ZAEyZCZCAuxBxund83TumsFcZCtZCiavrCQ9BsJUkjkWGo7TlZBlUHe4hzJBSlix7YFQvha4Q3TK7vJ7o70XtKsR9gwnAIzbH1g4BXdiSIZBOuLEn0ZD";
  private final DoctorRepo doctorRepo;
+
  private final GeminiServiceLatest aiService;
+
  private final WhatsappServiceImpl whatsAppService;
+
  private final ObjectMapper objectMapper;
 
  public WebhookController(
@@ -41,37 +44,67 @@ public class WebhookController {
      this.objectMapper = objectMapper;
  }
 
- /**
-  * Meta Webhook Verification
+ /*
+  * ============================================================
+  * META WEBHOOK VERIFICATION
+  * ============================================================
+  *
+  * Meta calls:
+  *
+  * GET /webhook/whatsapp
+  *
+  * Meta sends:
+  *
+  * hub.mode
+  * hub.verify_token
+  * hub.challenge
   */
  @GetMapping("/whatsapp")
  public String verifyWebhook(
+
          @RequestParam("hub.mode") String mode,
+
          @RequestParam("hub.verify_token") String token,
+
          @RequestParam("hub.challenge") String challenge) {
 
-     System.out.println("Inside /webhook/whatsapp");
+     System.out.println("=================================");
+     System.out.println("WHATSAPP WEBHOOK VERIFICATION");
+     System.out.println("=================================");
+
+     System.out.println("Mode = " + mode);
+     System.out.println("Verify Token Received = "
+             + (token != null && !token.isBlank()));
 
      if ("subscribe".equals(mode)
              && VERIFY_TOKEN.equals(token)) {
 
-         System.out.println("Webhook verification successful");
+         System.out.println("Webhook verification SUCCESS");
 
          return challenge;
      }
 
-     System.out.println("Webhook verification failed");
+     System.out.println("Webhook verification FAILED");
 
      return "Verification failed";
  }
 
- /**
-  * WhatsApp Incoming Message Webhook
+ /*
+  * ============================================================
+  * WHATSAPP INCOMING MESSAGE
+  * ============================================================
+  *
+  * Meta calls:
+  *
+  * POST /webhook/whatsapp
+  *
+  * whenever a WhatsApp event/message is received.
   */
  @PostMapping("/whatsapp")
  public ResponseEntity<String> handleIncomingMessages(
          @RequestBody String payload) {
 
+     System.out.println();
      System.out.println("=================================");
      System.out.println("WHATSAPP WEBHOOK RECEIVED");
      System.out.println("=================================");
@@ -80,62 +113,89 @@ public class WebhookController {
 
      try {
 
-         JsonNode json =
-                 objectMapper.readTree(payload);
-
-         JsonNode entry =
-                 json.path("entry").get(0);
-
-         if (entry == null || entry.isMissingNode()) {
-             System.out.println("Entry not found");
-             return ResponseEntity.ok("EVENT_RECEIVED");
-         }
-
-         JsonNode change =
-                 entry.path("changes").get(0);
-
-         if (change == null || change.isMissingNode()) {
-             System.out.println("Change not found");
-             return ResponseEntity.ok("EVENT_RECEIVED");
-         }
-
-         JsonNode value =
-                 change.path("value");
-
          /*
-          * =====================================================
-          * STEP 1: CHECK WHETHER THIS WEBHOOK CONTAINS MESSAGE
-          * =====================================================
+          * ====================================================
+          * STEP 1: PARSE JSON
+          * ====================================================
           */
 
-         JsonNode messages =
-                 value.path("messages");
+         JsonNode json = objectMapper.readTree(payload);
+
+         JsonNode entry = json.path("entry").get(0);
+
+         if (entry == null || entry.isMissingNode()) {
+
+             System.out.println("Entry not found");
+
+             return ResponseEntity.ok("EVENT_RECEIVED");
+         }
+
+         JsonNode change = entry.path("changes").get(0);
+
+         if (change == null || change.isMissingNode()) {
+
+             System.out.println("Change not found");
+
+             return ResponseEntity.ok("EVENT_RECEIVED");
+         }
+
+         JsonNode value = change.path("value");
+
+         /*
+          * ====================================================
+          * STEP 2: CHECK FOR MESSAGE
+          * ====================================================
+          *
+          * Meta also sends webhook events for:
+          *
+          * - message status
+          * - delivered
+          * - read
+          * - sent
+          *
+          * Those may NOT contain "messages".
+          */
+
+         JsonNode messages = value.path("messages");
 
          if (!messages.isArray()
                  || messages.isEmpty()) {
 
              System.out.println(
-                     "Webhook does not contain an incoming message");
+                     "Webhook received but no incoming message found");
 
              return ResponseEntity.ok("EVENT_RECEIVED");
          }
 
          /*
-          * =====================================================
-          * STEP 2: GET MESSAGE
-          * =====================================================
+          * ====================================================
+          * STEP 3: GET MESSAGE
+          * ====================================================
           */
 
-         JsonNode message =
-                 messages.get(0);
+         JsonNode message = messages.get(0);
 
+         /*
+          * Patient WhatsApp number
+          *
+          * Example:
+          *
+          * 919999999999
+          */
          String fromNumber =
-                 message.path("from").asText();
+                 message.path("from").asText(null);
 
+         /*
+          * Patient's message
+          *
+          * Example:
+          *
+          * Hello Doctor
+          */
          String messageText =
                  message.path("text")
                         .path("body")
-                        .asText();
+                        .asText(null);
 
          System.out.println(
                  "Patient WhatsApp Number = "
@@ -146,65 +206,122 @@ public class WebhookController {
                  + messageText);
 
          /*
-          * =====================================================
-          * STEP 3: GET DOCTOR WHATSAPP NUMBER
-          * =====================================================
+          * ====================================================
+          * STEP 4: VALIDATE MESSAGE
+          * ====================================================
+          */
+
+         if (fromNumber == null
+                 || fromNumber.isBlank()) {
+
+             System.out.println(
+                     "Patient WhatsApp number missing");
+
+             return ResponseEntity.ok("EVENT_RECEIVED");
+         }
+
+         if (messageText == null
+                 || messageText.isBlank()) {
+
+             System.out.println(
+                     "Message text missing");
+
+             return ResponseEntity.ok("EVENT_RECEIVED");
+         }
+
+         /*
+          * ====================================================
+          * STEP 5: GET DOCTOR WHATSAPP NUMBER
+          * ====================================================
+          *
+          * This comes from:
+          *
+          * value.metadata.display_phone_number
+          *
+          * This is the WhatsApp number that RECEIVED
+          * the patient's message.
           */
 
          String doctorNumber =
                  value.path("metadata")
                       .path("display_phone_number")
-                      .asText();
+                      .asText(null);
 
          System.out.println(
                  "Doctor WhatsApp Number from Meta = "
                  + doctorNumber);
 
+         if (doctorNumber == null
+                 || doctorNumber.isBlank()) {
+
+             System.out.println(
+                     "Doctor WhatsApp number missing from Meta");
+
+             return ResponseEntity.ok("EVENT_RECEIVED");
+         }
+
          /*
-          * =====================================================
-          * STEP 4: NORMALIZE DOCTOR NUMBER
+          * ====================================================
+          * STEP 6: NORMALIZE DOCTOR NUMBER
+          * ====================================================
+          *
+          * IMPORTANT:
+          *
+          * We are keeping the number format compatible
+          * with your current database.
           *
           * Example:
-          *
-          * Meta:
-          * +91 91654 10555
           *
           * DB:
           * 9165410555
           *
-          * =====================================================
+          * Postman:
+          * 9165410555
+          *
+          * Therefore we do NOT remove 91 here.
+          *
+          * We only remove formatting characters.
           */
 
          doctorNumber =
                  doctorNumber.replaceAll("\\D", "");
-
-         if (doctorNumber.startsWith("91")
-                 && doctorNumber.length() > 10) {
-
-             doctorNumber =
-                     doctorNumber.substring(2);
-         }
 
          System.out.println(
                  "Normalized Doctor WhatsApp Number = "
                  + doctorNumber);
 
          /*
-          * =====================================================
-          * STEP 5: FIND DOCTOR FROM doctors_details
-          * =====================================================
+          * ====================================================
+          * STEP 7: FIND DOCTOR
+          * ====================================================
+          *
+          * This queries:
+          *
+          * doctors_details
+          *
+          * using:
+          *
+          * whatsapp_number
           */
 
          Optional<Doctor> doctorOptional =
                  doctorRepo.findByWhatsappNumber(
-                         doctorNumber
-                 );
+                         doctorNumber);
 
          if (doctorOptional.isEmpty()) {
 
              System.out.println(
-                     "Doctor not found for WhatsApp number = "
+                     "=================================");
+
+             System.out.println(
+                     "DOCTOR NOT FOUND");
+
+             System.out.println(
+                     "WhatsApp Number = "
                      + doctorNumber);
+
+             System.out.println(
+                     "=================================");
 
              return ResponseEntity.ok("EVENT_RECEIVED");
          }
@@ -213,100 +330,179 @@ public class WebhookController {
                  doctorOptional.get();
 
          System.out.println(
-                 "Doctor found = "
-                 + doctor.getFullName());
+                 "=================================");
+
+         System.out.println(
+                 "DOCTOR FOUND");
 
          System.out.println(
                  "Doctor ID = "
                  + doctor.getId());
 
+         System.out.println(
+                 "Doctor Name = "
+                 + doctor.getFullName());
+
+         System.out.println(
+                 "Doctor WhatsApp Number = "
+                 + doctor.getWhatsappNumber());
+
+         System.out.println(
+                 "=================================");
+
          /*
-          * =====================================================
-          * STEP 6: VALIDATE WHATSAPP CONFIGURATION
-          * =====================================================
+          * ====================================================
+          * STEP 8: CHECK WHATSAPP ACTIVATION
+          * ====================================================
           */
 
          if (!doctor.isWhatsappActivated()) {
 
              System.out.println(
-                     "WhatsApp is not activated for doctor");
-
-             return ResponseEntity.ok("EVENT_RECEIVED");
-         }
-
-         if (doctor.getWhatsappPhoneNumberId() == null
-                 || doctor.getWhatsappPhoneNumberId().isBlank()) {
-
-             System.out.println(
-                     "WhatsApp Phone Number ID is missing");
-
-             return ResponseEntity.ok("EVENT_RECEIVED");
-         }
-
-         if (doctor.getWhatsappAccessToken() == null
-                 || doctor.getWhatsappAccessToken().isBlank()) {
-
-             System.out.println(
-                     "WhatsApp Access Token is missing");
+                     "WhatsApp is NOT activated for doctor "
+                     + doctor.getId());
 
              return ResponseEntity.ok("EVENT_RECEIVED");
          }
 
          /*
-          * =====================================================
-          * STEP 7: CALL GEMINI
-          * =====================================================
+          * ====================================================
+          * STEP 9: CHECK WHATSAPP PHONE NUMBER ID
+          * ====================================================
+          */
+
+         if (doctor.getWhatsappPhoneNumberId() == null
+                 || doctor.getWhatsappPhoneNumberId().isBlank()) {
+
+             System.out.println(
+                     "WhatsApp Phone Number ID is missing "
+                     + "for doctor "
+                     + doctor.getId());
+
+             return ResponseEntity.ok("EVENT_RECEIVED");
+         }
+
+         /*
+          * ====================================================
+          * STEP 10: CHECK WHATSAPP ACCESS TOKEN
+          * ====================================================
+          */
+
+         if (doctor.getWhatsappAccessToken() == null
+                 || doctor.getWhatsappAccessToken().isBlank()) {
+
+             System.out.println(
+                     "WhatsApp Access Token is missing "
+                     + "for doctor "
+                     + doctor.getId());
+
+             return ResponseEntity.ok("EVENT_RECEIVED");
+         }
+
+         /*
+          * ====================================================
+          * STEP 11: CALL GEMINI
+          * ====================================================
           */
 
          System.out.println(
-                 "Calling AI service...");
+                 "=================================");
+
+         System.out.println(
+                 "CALLING AI SERVICE");
+
+         System.out.println(
+                 "=================================");
 
          String aiResponse =
                  aiService.generateResponse(
                          messageText,
-                         doctor
-                 );
+                         doctor);
 
          System.out.println(
                  "AI Response = "
                  + aiResponse);
 
          /*
-          * =====================================================
-          * STEP 8: SEND RESPONSE TO PATIENT
+          * ====================================================
+          * STEP 12: SEND RESPONSE TO PATIENT
+          * ====================================================
           *
           * IMPORTANT:
           *
-          * fromNumber = patient number
+          * doctor
+          *     ↓
+          * contains doctor's:
           *
-          * doctor = contains:
-          * - whatsappAccessToken
-          * - whatsappPhoneNumberId
-          * =====================================================
+          * - WhatsApp Access Token
+          * - WhatsApp Phone Number ID
+          *
+          * fromNumber
+          *     ↓
+          * is the PATIENT number
+          *
+          * Therefore the response goes:
+          *
+          * Doctor WhatsApp account
+          *             ↓
+          *       Patient number
           */
+
+         System.out.println(
+                 "=================================");
+
+         System.out.println(
+                 "SENDING WHATSAPP RESPONSE");
+
+         System.out.println(
+                 "To Patient = "
+                 + fromNumber);
+
+         System.out.println(
+                 "=================================");
 
          whatsAppService.sendMessage(
                  doctor,
                  fromNumber,
-                 aiResponse
-         );
+                 aiResponse);
 
          System.out.println(
-                 "Response sent successfully to patient");
+                 "=================================");
+
+         System.out.println(
+                 "RESPONSE SENT SUCCESSFULLY");
+
+         System.out.println(
+                 "=================================");
 
      } catch (Exception e) {
 
          System.err.println(
-                 "Error processing WhatsApp webhook: "
+                 "=================================");
+
+         System.err.println(
+                 "ERROR PROCESSING WHATSAPP WEBHOOK");
+
+         System.err.println(
+                 "=================================");
+
+         System.err.println(
+                 "Error = "
                  + e.getMessage());
 
          e.printStackTrace();
      }
 
      /*
-      * Always return 200 to Meta
-      * after receiving the webhook.
+      * ========================================================
+      * IMPORTANT
+      * ========================================================
+      *
+      * Always return HTTP 200 after receiving the webhook.
+      *
+      * This tells Meta that our server received the event.
       */
+
      return ResponseEntity.ok("EVENT_RECEIVED");
  }
 }
