@@ -1,7 +1,6 @@
 package com.doctor.clinic.DoctorClinic.serviceImpl;
 
 import java.util.Map;
-import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,7 +16,6 @@ import com.doctor.clinic.DoctorClinic.request.WhatsAppBusinessActivateRequest;
 import com.doctor.clinic.DoctorClinic.response.DoctorResponse;
 import com.doctor.clinic.DoctorClinic.service.DoctorService;
 
-import jakarta.validation.Valid;
 
 @Service
 public class DoctorServiceImpl implements DoctorService {
@@ -38,6 +36,7 @@ public class DoctorServiceImpl implements DoctorService {
 
 	@Value("${facebook.redirect.uri:}")
 	private String redirectUri;
+	
 
 	@Override
 	public String addNewDoctor(DoctorRegisterRequest req) {

@@ -1,15 +1,14 @@
 package com.doctor.clinic.DoctorClinic.controller;
 
-import org.springframework.stereotype.Controller;
+
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.doctor.clinic.DoctorClinic.request.PatientMsgRequest;
 
-import com.doctor.clinic.DoctorClinic.AIServices.GeminiService;
+import com.doctor.clinic.DoctorClinic.AIServices.GeminiServiceLatest;
 import com.doctor.clinic.DoctorClinic.entity.Doctor;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +22,7 @@ import java.util.Map;
 public class PatientController {
 
 	private final DoctorRepo doctorRepo;
-	private final GeminiService aiService;
+	private final GeminiServiceLatest aiService;
 
 	
 	@PostMapping("/query")

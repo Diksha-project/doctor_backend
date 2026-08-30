@@ -43,6 +43,17 @@ public class WebhookController {
      this.whatsAppService = whatsAppService;
      this.objectMapper = objectMapper;
  }
+ 
+ /*
+  * ============================================================
+  * ToKeep render alive
+  * ============================================================
+  */
+ 
+ @GetMapping("/health")
+ public String health() {
+     return "OK";
+ }
 
  /*
   * ============================================================
