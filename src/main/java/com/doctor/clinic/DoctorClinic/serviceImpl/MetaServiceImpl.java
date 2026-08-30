@@ -79,6 +79,8 @@ public class MetaServiceImpl implements MetaService {
 
         System.out.println(
                 "STEP 3: WABA ID received = " + wabaId);
+        //subscribe then only message will be sent to doctor
+        subscribeToWaba(accessToken, wabaId);
 
 
         // STEP 4: Get WhatsApp phone number
@@ -328,6 +330,64 @@ public class MetaServiceImpl implements MetaService {
                     "Failed to get WABA ID: "
                             + e.getMessage(),
                     e);
+        }
+    }
+    
+    private void subscribeToWaba(
+            String accessToken,
+            String wabaId) {
+
+        String url =
+                "https://graph.facebook.com/"
+                + version
+                + "/"
+                + wabaId
+                + "/subscribed_apps";
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+
+        HttpEntity<Void> entity =
+                new HttpEntity<>(headers);
+
+        System.out.println(
+                "========== SUBSCRIBE APP TO WABA ==========");
+
+        System.out.println("WABA ID = " + wabaId);
+
+        try {
+
+            ResponseEntity<JsonNode> response =
+                    restTemplate.exchange(
+                            url,
+                            HttpMethod.POST,
+                            entity,
+                            JsonNode.class
+                    );
+
+            System.out.println(
+                    "SUBSCRIBE HTTP STATUS = "
+                    + response.getStatusCode()
+            );
+
+            System.out.println(
+                    "SUBSCRIBE RESPONSE = "
+                    + response.getBody()
+            );
+
+        } catch (Exception e) {
+
+            System.err.println(
+                    "========== WABA SUBSCRIPTION FAILED =========="
+            );
+
+            e.printStackTrace();
+
+            throw new RuntimeException(
+                    "Failed to subscribe app to WABA: "
+                    + e.getMessage(),
+                    e
+            );
         }
     }
 
