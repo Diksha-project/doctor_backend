@@ -103,9 +103,12 @@ public class MetaServiceImpl implements MetaService {
 
         doctor.setWhatsappPhoneNumberId(
                 phone.getId());
+        
+        
+        String cleanPhoneNumber = phone.getDisplayPhoneNumber()
+                .replaceAll("\\D", "");
 
-        doctor.setWhatsappNumber(
-                phone.getDisplayPhoneNumber());
+        doctor.setWhatsappNumber(cleanPhoneNumber);
 
         doctor.setWhatsappActivated(true);
 
