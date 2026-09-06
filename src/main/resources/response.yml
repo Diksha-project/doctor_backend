@@ -1,0 +1,13 @@
+responses:
+  GREETING:
+    - "Hello! I am {doctorName}'s virtual assistant. How can I help you?"
+    - "Hello! How may I assist you regarding {doctorName}?"
+
+  THANKS:
+    - "You're welcome! Is there anything else I can help you with?"
+
+  GOODBYE:
+    - "Thank you for contacting the clinic. Have a great day!"
+
+  UNKNOWN:
+    - "Sorry, I didn't quite catch your message. Could you please rephrase it?"

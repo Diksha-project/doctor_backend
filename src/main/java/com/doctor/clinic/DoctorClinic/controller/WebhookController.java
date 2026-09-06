@@ -14,7 +14,9 @@ import org.springframework.web.bind.annotation.RestController;
 import com.doctor.clinic.DoctorClinic.AIServices.GeminiServiceLatest;
 import com.doctor.clinic.DoctorClinic.AIServices.WhatsappServiceImpl;
 import com.doctor.clinic.DoctorClinic.entity.Doctor;
+import com.doctor.clinic.DoctorClinic.model.Intent;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
+import com.doctor.clinic.DoctorClinic.serviceImpl.IntentDetector;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -29,17 +31,20 @@ public class WebhookController {
     private final GeminiServiceLatest aiService;
     private final WhatsappServiceImpl whatsAppService;
     private final ObjectMapper objectMapper;
+    private final IntentDetector intentDetector;
 
     public WebhookController(
             DoctorRepo doctorRepo,
             GeminiServiceLatest aiService,
             WhatsappServiceImpl whatsAppService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            IntentDetector intentDetector) {
 
         this.doctorRepo = doctorRepo;
         this.aiService = aiService;
         this.whatsAppService = whatsAppService;
         this.objectMapper = objectMapper;
+        this.intentDetector = intentDetector;
     }
 
     /*
@@ -322,17 +327,11 @@ public class WebhookController {
             if (doctorOptional.isEmpty()) {
 
                 System.out.println(
-                        "=================================");
-
-                System.out.println(
                         "DOCTOR NOT FOUND");
 
                 System.out.println(
                         "WhatsApp Number = "
                                 + doctorNumber);
-
-                System.out.println(
-                        "=================================");
 
                 return ResponseEntity.ok(
                         "EVENT_RECEIVED");
@@ -341,8 +340,6 @@ public class WebhookController {
             Doctor doctor =
                     doctorOptional.get();
 
-            System.out.println(
-                    "=================================");
 
             System.out.println(
                     "DOCTOR FOUND");
@@ -358,9 +355,6 @@ public class WebhookController {
             System.out.println(
                     "Doctor WhatsApp Number = "
                             + doctor.getWhatsappNumber());
-
-            System.out.println(
-                    "=================================");
 
             /*
              * ====================================================
@@ -415,105 +409,209 @@ public class WebhookController {
                 return ResponseEntity.ok(
                         "EVENT_RECEIVED");
             }
+            
+         // ====================================================
+         // STEP 12: DETECT INTENT
+         // ====================================================
 
-            /*
-             * ====================================================
-             * STEP 12: SEND MESSAGE TO GEMINI
-             * ====================================================
-             *
-             * Patient message:
-             *
-             * "What are your consultation timings?"
-             *
-             * goes to Gemini.
-             */
 
-            System.out.println(
-                    "=================================");
+         System.out.println(
+                 "DETECTING MESSAGE INTENT Patient Message = " + messageText
+         );
 
-            System.out.println(
-                    "CALLING AI SERVICE");
+         Intent intent =
+                 intentDetector.detect(messageText);
 
-            System.out.println(
-                    "Patient Message = "
-                            + messageText);
+         System.out.println(
+                 "Detected Intent = " + intent
+         );
 
-            System.out.println(
-                    "=================================");
 
-            String aiResponse =
-                    aiService.generateResponse(
-                            messageText,
-                            doctor);
+         // ====================================================
+         // STEP 13: HANDLE INTENT
+         // ====================================================
 
-            System.out.println(
-                    "AI Response = "
-                            + aiResponse);
+         String response;
 
-            /*
-             * ====================================================
-             * STEP 13: SEND AI RESPONSE TO PATIENT
-             * ====================================================
-             *
-             * doctor contains:
-             *
-             * - WhatsApp access token
-             * - WhatsApp phone number ID
-             *
-             * fromNumber contains:
-             *
-             * - patient's WhatsApp number
-             */
+         if (intent == Intent.GREETING) {
 
-            System.out.println(
-                    "=================================");
+             System.out.println(
+                     "GREETING detected - Gemini NOT called"
+             );
 
-            System.out.println(
-                    "SENDING WHATSAPP RESPONSE");
+             response =
+                     "Hello! I am "
+                     + doctor.getFullName()
+                     + "'s virtual assistant. "
+                     + "How can I help you?";
 
-            System.out.println(
-                    "To Patient = "
-                            + fromNumber);
+         } else if (intent == Intent.THANKS) {
 
-            System.out.println(
-                    "=================================");
+             System.out.println(
+                     "THANKS detected - Gemini NOT called"
+             );
 
-            whatsAppService.sendMessage(
-                    doctor,
-                    fromNumber,
-                    aiResponse);
+             response =
+                     "You're welcome! Is there anything else I can help you with?";
 
-            System.out.println(
-                    "=================================");
+         } else if (intent == Intent.GOODBYE) {
 
-            System.out.println(
-                    "RESPONSE SENT SUCCESSFULLY");
+             System.out.println(
+                     "GOODBYE detected - Gemini NOT called"
+             );
 
-            System.out.println(
-                    "=================================");
+             response =
+                     "Thank you for contacting the clinic. Have a great day!";
 
-        } catch (Exception e) {
+         } else {
 
-            System.err.println(
-                    "=================================");
+             System.out.println(
+                     "UNKNOWN intent - Calling Gemini"
+             );
 
-            System.err.println(
-                    "ERROR PROCESSING WHATSAPP WEBHOOK");
+             response =
+                     aiService.generateResponse(
+                             messageText,
+                             doctor);
+         }
 
-            System.err.println(
-                    "=================================");
-
-            System.err.println(
-                    "Error = "
-                            + e.getMessage());
-
-            e.printStackTrace();
-        }
+//            /*
+//             * ====================================================
+//             * STEP 12: SEND MESSAGE TO GEMINI
+//             * ====================================================
+//             *
+//             * Patient message:
+//             *
+//             * "What are your consultation timings?"
+//             *
+//             * goes to Gemini.
+//             */
+//
+//            System.out.println(
+//                    "=================================");
+//
+//            System.out.println(
+//                    "CALLING AI SERVICE");
+//
+//            System.out.println(
+//                    "Patient Message = "
+//                            + messageText);
+//
+//            System.out.println(
+//                    "=================================");
+//
+//            String aiResponse =
+//                    aiService.generateResponse(
+//                            messageText,
+//                            doctor);
+//
+//            System.out.println(
+//                    "AI Response = "
+//                            + aiResponse);
+//
+//            /*
+//             * ====================================================
+//             * STEP 13: SEND AI RESPONSE TO PATIENT
+//             * ====================================================
+//             *
+//             * doctor contains:
+//             *
+//             * - WhatsApp access token
+//             * - WhatsApp phone number ID
+//             *
+//             * fromNumber contains:
+//             *
+//             * - patient's WhatsApp number
+//             */
+//
+//            System.out.println(
+//                    "=================================");
+//
+//            System.out.println(
+//                    "SENDING WHATSAPP RESPONSE");
+//
+//            System.out.println(
+//                    "To Patient = "
+//                            + fromNumber);
+//
+//            System.out.println(
+//                    "=================================");
+//
+//            whatsAppService.sendMessage(
+//                    doctor,
+//                    fromNumber,
+//                    aiResponse);
+//
+//            System.out.println(
+//                    "=================================");
+//
+//            System.out.println(
+//                    "RESPONSE SENT SUCCESSFULLY");
+//
+//            System.out.println(
+//                    "=================================");
+//
+//        } catch (Exception e) {
+//
+//            System.err.println(
+//                    "=================================");
+//
+//            System.err.println(
+//                    "ERROR PROCESSING WHATSAPP WEBHOOK");
+//
+//            System.err.println(
+//                    "=================================");
+//
+//            System.err.println(
+//                    "Error = "
+//                            + e.getMessage());
+//
+//            e.printStackTrace();
+//        }
 
         /*
          * Always return HTTP 200 to Meta.
          */
-        return ResponseEntity.ok(
-                "EVENT_RECEIVED");
+        
+      // ====================================================
+      // STEP 14: SEND RESPONSE TO PATIENT
+      // ====================================================
+
+
+      System.out.println(
+              "SENDING WHATSAPP RESPONSE To Patient = " + fromNumber
+      );
+
+ 
+
+      whatsAppService.sendMessage(
+              doctor,
+              fromNumber,
+              response
+      );
+
+      System.out.println(
+              "RESPONSE SENT SUCCESSFULLY"
+      );
+
+
+      } catch (Exception e) {
+
+         
+          System.err.println(
+                  "ERROR PROCESSING WHATSAPP WEBHOOK" + e.getMessage()
+          );
+
+          e.printStackTrace();
+      }
+
+      // ====================================================
+      // ALWAYS RETURN HTTP 200 TO META
+      // ====================================================
+
+      return ResponseEntity.ok(
+              "EVENT_RECEIVED"
+      );
+      
     }
-}
+    }
