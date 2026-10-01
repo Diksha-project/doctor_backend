@@ -3,6 +3,7 @@ package com.doctor.clinic.DoctorClinic.controller;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,6 +17,8 @@ import com.doctor.clinic.DoctorClinic.AIServices.WhatsappServiceImpl;
 import com.doctor.clinic.DoctorClinic.entity.Doctor;
 import com.doctor.clinic.DoctorClinic.model.Intent;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
+import com.doctor.clinic.DoctorClinic.repo.ProcessedWhatsappMessageRepo;
+import com.doctor.clinic.DoctorClinic.entity.ProcessedWhatsappMessage;
 import com.doctor.clinic.DoctorClinic.serviceImpl.IntentDetector;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,19 +35,22 @@ public class WebhookController {
     private final WhatsappServiceImpl whatsAppService;
     private final ObjectMapper objectMapper;
     private final IntentDetector intentDetector;
+    private final ProcessedWhatsappMessageRepo processedMessageRepo;
 
     public WebhookController(
             DoctorRepo doctorRepo,
             GeminiServiceLatest aiService,
             WhatsappServiceImpl whatsAppService,
             ObjectMapper objectMapper,
-            IntentDetector intentDetector) {
+            IntentDetector intentDetector,
+            ProcessedWhatsappMessageRepo processedMessageRepo) {
 
         this.doctorRepo = doctorRepo;
         this.aiService = aiService;
         this.whatsAppService = whatsAppService;
         this.objectMapper = objectMapper;
         this.intentDetector = intentDetector;
+        this.processedMessageRepo = processedMessageRepo;
     }
 
     /*
@@ -200,6 +206,17 @@ public class WebhookController {
 
             JsonNode message =
                     messages.get(0);
+
+            String messageId = message.path("id").asText(null);
+            if (messageId != null && !messageId.isBlank()) {
+                try {
+                    processedMessageRepo.saveAndFlush(
+                            new ProcessedWhatsappMessage(messageId));
+                } catch (DataIntegrityViolationException duplicate) {
+                    System.out.println("Ignoring duplicate WhatsApp message ID = " + messageId);
+                    return ResponseEntity.ok("EVENT_RECEIVED");
+                }
+            }
 
             String messageType =
                     message.path("type").asText();
