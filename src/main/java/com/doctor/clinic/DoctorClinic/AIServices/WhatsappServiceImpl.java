@@ -7,6 +7,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.doctor.clinic.DoctorClinic.entity.Doctor;
 
@@ -18,12 +20,50 @@ public class WhatsappServiceImpl {
 
     private final WebClient webClient =
             WebClient.builder().build();
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public record DownloadedMedia(byte[] bytes, String mimeType) {}
+
+    /** Downloads an incoming WhatsApp attachment using Meta's media URL flow. */
+    public DownloadedMedia downloadMedia(String mediaId, String accessToken) {
+        String metadataJson = webClient.get()
+                .uri("https://graph.facebook.com/" + graphVersion + "/" + mediaId)
+                .header("Authorization", "Bearer " + accessToken)
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
+
+        try {
+            JsonNode metadata = objectMapper.readTree(metadataJson);
+            String downloadUrl = metadata.path("url").asText(null);
+            String mimeType = metadata.path("mime_type").asText(null);
+            long fileSize = metadata.path("file_size").asLong(0);
+            if (downloadUrl == null || mimeType == null) {
+                throw new IllegalArgumentException("Meta did not return media URL or MIME type");
+            }
+            if (fileSize > 14_000_000) {
+                throw new IllegalArgumentException("Attachment exceeds the supported size");
+            }
+            byte[] bytes = webClient.get()
+                    .uri(downloadUrl)
+                    .header("Authorization", "Bearer " + accessToken)
+                    .retrieve()
+                    .bodyToMono(byte[].class)
+                    .block();
+            if (bytes == null || bytes.length == 0 || bytes.length > 14_000_000) {
+                throw new IllegalArgumentException("Attachment is empty or exceeds the supported size");
+            }
+            return new DownloadedMedia(bytes, mimeType);
+        } catch (Exception e) {
+            throw new IllegalStateException("Could not read WhatsApp media metadata", e);
+        }
+    }
 
     /**
      * Send WhatsApp message using the
      * doctor's connected WhatsApp account.
      */
-    public void sendMessage(
+    public boolean sendMessage(
             Doctor doctor,
             String toNumber,
             String message) {
@@ -54,7 +94,7 @@ public class WhatsappServiceImpl {
                     + "for Doctor ID = "
                     + doctor.getId());
 
-            return;
+            return false;
         }
 
         if (accessToken == null
@@ -65,7 +105,7 @@ public class WhatsappServiceImpl {
                     + "for Doctor ID = "
                     + doctor.getId());
 
-            return;
+            return false;
         }
 
         /*
@@ -149,10 +189,6 @@ public class WhatsappServiceImpl {
                 + phoneNumberId);
 
         System.out.println(
-                "To Number = "
-                + toNumber);
-
-        System.out.println(
                 "URL = "
                 + url);
 
@@ -186,6 +222,7 @@ public class WhatsappServiceImpl {
 
             System.out.println(
                     "WhatsApp message sent successfully");
+            return true;
 
         } catch (WebClientResponseException e) {
 
@@ -205,6 +242,7 @@ public class WhatsappServiceImpl {
             System.err.println(
                     "Response Body = "
                     + e.getResponseBodyAsString());
+            return false;
 
         } catch (Exception e) {
 
@@ -213,6 +251,7 @@ public class WhatsappServiceImpl {
                     + e.getMessage());
 
             e.printStackTrace();
+            return false;
         }
     }
 }

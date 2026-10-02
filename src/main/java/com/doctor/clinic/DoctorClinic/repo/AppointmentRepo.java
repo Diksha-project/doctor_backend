@@ -10,9 +10,19 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Collection;
 
 @Repository
 public interface AppointmentRepo extends JpaRepository<Appointment, Long> {
+
+    @Query("SELECT a FROM Appointment a LEFT JOIN a.patient p WHERE a.organization.id = :organizationId "
+            + "AND (p.id = :patientId OR a.patientPhone IN :phoneAliases) "
+            + "ORDER BY a.appointmentDate DESC, a.appointmentTime DESC")
+    List<Appointment> findPatientHistory(@Param("organizationId") Long organizationId,
+                                         @Param("patientId") Long patientId,
+                                         @Param("phoneAliases") Collection<String> phoneAliases);
+
+    List<Appointment> findTop100ByPatientIsNullAndIdGreaterThanOrderByIdAsc(Long id);
     
     // Find by doctor
     List<Appointment> findByDoctorId(Long doctorId);

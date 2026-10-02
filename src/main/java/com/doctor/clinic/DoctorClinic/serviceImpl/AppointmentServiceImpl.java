@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import com.doctor.clinic.DoctorClinic.entity.Appointment;
 import com.doctor.clinic.DoctorClinic.entity.Doctor;
 import com.doctor.clinic.DoctorClinic.entity.DoctorSlot;
+import com.doctor.clinic.DoctorClinic.entity.Patient;
 import com.doctor.clinic.DoctorClinic.repo.AppointmentRepo;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
 import com.doctor.clinic.DoctorClinic.repo.DoctorSlotRepo;
@@ -25,6 +26,7 @@ import com.doctor.clinic.DoctorClinic.response.AppointmentInfo;
 import com.doctor.clinic.DoctorClinic.response.AppointmentSummary;
 import com.doctor.clinic.DoctorClinic.response.BookAppointmentResponse;
 import com.doctor.clinic.DoctorClinic.service.AppointmentService;
+import com.doctor.clinic.DoctorClinic.serviceImpl.PatientProfileService;
 
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +43,9 @@ public class AppointmentServiceImpl implements AppointmentService {
 
 	@Autowired
 	private DoctorSlotRepo doctorSlotRepo;
+
+	@Autowired
+	private PatientProfileService patientProfileService;
 
 	@Transactional
 	public BookAppointmentResponse bookAppointment(BookAppointmentRequest request) {
@@ -108,7 +113,11 @@ public class AppointmentServiceImpl implements AppointmentService {
 		BigDecimal finalAmount = doctor.getConsultationFee();
 
 		// 9. Create appointment with dynamic slot duration
+		Patient patient = patientProfileService.upsert(doctor.getOrganization(), request.getPatientPhone(),
+				request.getPatientName(), request.getPatientEmail(), request.getPatientAge(), request.getPatientGender());
+
 		Appointment appointment = Appointment.builder().doctor(doctor).organization(doctor.getOrganization())
+				.patient(patient)
 				.patientName(request.getPatientName()).patientPhone(request.getPatientPhone())
 				.patientEmail(request.getPatientEmail()).patientAge(request.getPatientAge())
 				.patientGender(request.getPatientGender()).appointmentDate(request.getAppointmentDate())
