@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Collection;
+import org.springframework.data.domain.Pageable;
 
 @Repository
 public interface AppointmentRepo extends JpaRepository<Appointment, Long> {
@@ -23,6 +24,20 @@ public interface AppointmentRepo extends JpaRepository<Appointment, Long> {
                                          @Param("phoneAliases") Collection<String> phoneAliases);
 
     List<Appointment> findTop100ByPatientIsNullAndIdGreaterThanOrderByIdAsc(Long id);
+
+    List<Appointment> findByDoctorIdAndOrganizationIdAndAppointmentDateOrderByAppointmentTimeAsc(
+            Long doctorId, Long organizationId, LocalDate appointmentDate);
+
+    @Query("SELECT a FROM Appointment a LEFT JOIN a.patient p WHERE a.organization.id = :organizationId "
+            + "AND (p.id = :patientId OR a.patientPhone IN :phoneAliases) "
+            + "AND (a.appointmentDate < :date OR (a.appointmentDate = :date AND a.appointmentTime < :time)) "
+            + "ORDER BY a.appointmentDate DESC, a.appointmentTime DESC")
+    List<Appointment> findPreviousPatientVisits(@Param("organizationId") Long organizationId,
+                                                @Param("patientId") Long patientId,
+                                                @Param("phoneAliases") Collection<String> phoneAliases,
+                                                @Param("date") LocalDate date,
+                                                @Param("time") LocalTime time,
+                                                Pageable pageable);
     
     // Find by doctor
     List<Appointment> findByDoctorId(Long doctorId);

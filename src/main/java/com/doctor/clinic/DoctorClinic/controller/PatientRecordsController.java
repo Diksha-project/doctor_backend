@@ -9,6 +9,9 @@ import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -72,6 +75,23 @@ public class PatientRecordsController {
                                 : null)).toList();
 
         return new PatientHistoryResponse(toProfile(patient), appointments, conversations);
+    }
+
+    @GetMapping("/{patientId}/messages")
+    public Page<ChatRecord> patientMessages(@PathVariable Long patientId,
+                                            @RequestParam(defaultValue = "0") int page,
+                                            @RequestParam(defaultValue = "50") int size) {
+        Long organizationId = organizationId();
+        patientRepo.findByIdAndOrganizationId(patientId, organizationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found"));
+
+        Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(100, Math.max(1, size)));
+        return chatMessageRepo.findPagedTimelineByPatientId(patientId, pageable)
+                .map(row -> new ChatRecord(row.getId(), row.getDirection(), row.getMessageType(),
+                        row.getMessageText(), row.getAttachmentMimeType(), row.getAttachmentName(),
+                        row.getHasAttachment(), row.getCreatedAt(), row.getHasAttachment()
+                                ? "/api/patients/" + patientId + "/messages/" + row.getId() + "/attachment"
+                                : null));
     }
 
     @GetMapping("/{patientId}/messages/{messageId}/attachment")

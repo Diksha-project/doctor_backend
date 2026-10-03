@@ -17,6 +17,8 @@ public interface DoctorRepo extends JpaRepository<Doctor, Long> {
 	java.util.Optional<Doctor> findByWhatsappNumber(String whatsappNumber);
 
 	List<Doctor> findByOrganizationId(Long organizationId);
+
+	Optional<Doctor> findByIdAndOrganizationId(Long doctorId, Long organizationId);
 	
 	
 	Doctor findByEmail(String email);

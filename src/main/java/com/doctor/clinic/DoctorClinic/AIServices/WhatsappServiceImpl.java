@@ -254,4 +254,18 @@ public class WhatsappServiceImpl {
             return false;
         }
     }
+
+    public boolean sendInteractiveMessage(Doctor doctor, String toNumber, Map<String, Object> interactive) {
+        String url = "https://graph.facebook.com/" + graphVersion + "/" + doctor.getWhatsappPhoneNumberId() + "/messages";
+        Map<String,Object> body = new HashMap<>();
+        body.put("messaging_product", "whatsapp"); body.put("to", toNumber); body.put("type", "interactive"); body.put("interactive", interactive);
+        try {
+            webClient.post().uri(url).header("Authorization", "Bearer " + doctor.getWhatsappAccessToken())
+                    .header("Content-Type", "application/json").bodyValue(body).retrieve().bodyToMono(String.class).block();
+            return true;
+        } catch (Exception e) {
+            System.err.println("Could not send WhatsApp interactive message: " + e.getMessage());
+            return false;
+        }
+    }
 }

@@ -124,6 +124,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 				.appointmentTime(request.getAppointmentTime()).endTime(endTime).slotDurationMinutes(slotDuration)
 				.consultationFee(doctor.getConsultationFee()).finalAmount(finalAmount).paymentStatus("PENDING")
 				.paymentMethod(request.getPaymentMethod()).appointmentStatus("SCHEDULED")
+				.appointmentType(request.getAppointmentType() == null ? "CONSULTATION" : request.getAppointmentType())
 				.reasonForVisit(request.getReasonForVisit()).symptoms(request.getSymptoms()).createdBy("PATIENT")
 				.build();
 

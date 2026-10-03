@@ -34,6 +34,7 @@ public class BookAppointmentRequest {
 	    
 	    private String reasonForVisit;
 	    private String symptoms;
+	    private String appointmentType;
 	    
 	    @NotBlank(message = "Payment method is required")
 	    private String paymentMethod; // CASH, CARD, UPI, ONLINE

@@ -21,6 +21,7 @@ import com.doctor.clinic.DoctorClinic.repo.ProcessedWhatsappMessageRepo;
 import com.doctor.clinic.DoctorClinic.serviceImpl.IntentDetector;
 import com.doctor.clinic.DoctorClinic.serviceImpl.PatientChatHistoryService;
 import com.doctor.clinic.DoctorClinic.serviceImpl.PatientProfileService;
+import com.doctor.clinic.DoctorClinic.serviceImpl.AppointmentBookingChatService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -39,6 +40,7 @@ public class WebhookController {
     private final ProcessedWhatsappMessageRepo processedMessageRepo;
     private final PatientProfileService patientProfileService;
     private final PatientChatHistoryService patientChatHistoryService;
+    private final AppointmentBookingChatService appointmentBookingChatService;
 
     public WebhookController(
             DoctorRepo doctorRepo,
@@ -48,7 +50,8 @@ public class WebhookController {
             IntentDetector intentDetector,
             ProcessedWhatsappMessageRepo processedMessageRepo,
             PatientProfileService patientProfileService,
-            PatientChatHistoryService patientChatHistoryService) {
+            PatientChatHistoryService patientChatHistoryService,
+            AppointmentBookingChatService appointmentBookingChatService) {
 
         this.doctorRepo = doctorRepo;
         this.aiService = aiService;
@@ -58,6 +61,7 @@ public class WebhookController {
         this.processedMessageRepo = processedMessageRepo;
         this.patientProfileService = patientProfileService;
         this.patientChatHistoryService = patientChatHistoryService;
+        this.appointmentBookingChatService = appointmentBookingChatService;
     }
 
     /*
@@ -200,6 +204,19 @@ public class WebhookController {
         Patient patient = patientProfileService.upsert(doctor.getOrganization(), fromNumber,
                 contactName, null, null, null);
         String recentHistory = patientChatHistoryService.recentPromptContext(patient.getId());
+        String interactiveId = extractInteractiveId(message);
+        if ("text".equals(type) || "interactive".equals(type) || "button".equals(type)) {
+            Optional<AppointmentBookingChatService.Reply> booking = appointmentBookingChatService.handle(doctor, patient, text, interactiveId);
+            if (booking.isPresent()) {
+                patientChatHistoryService.recordInbound(patient, doctor, messageId, type, text, null, null, null);
+                AppointmentBookingChatService.Reply reply = booking.get();
+                boolean sent = reply.interactive() == null
+                        ? whatsAppService.sendMessage(doctor, fromNumber, reply.text())
+                        : whatsAppService.sendInteractiveMessage(doctor, fromNumber, reply.interactive());
+                if (sent) patientChatHistoryService.recordOutbound(patient, doctor, messageId, reply.text());
+                return;
+            }
+        }
         String response;
         byte[] attachmentData = null;
         String attachmentMimeType = null;
@@ -282,6 +299,14 @@ public class WebhookController {
             case "button" -> nonBlank(message.path("button").path("text").asText(null));
             default -> null;
         };
+    }
+
+    private String extractInteractiveId(JsonNode message) {
+        JsonNode interactive = message.path("interactive");
+        String id = interactive.path("button_reply").path("id").asText(null);
+        if (id == null || id.isBlank()) id = interactive.path("list_reply").path("id").asText(null);
+        if ((id == null || id.isBlank()) && "button".equals(message.path("type").asText())) id = message.path("button").path("payload").asText(null);
+        return nonBlank(id);
     }
 
     private boolean isMediaMessage(String type) {
