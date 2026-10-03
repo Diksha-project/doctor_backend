@@ -12,6 +12,7 @@ import lombok.Data;
 public class AppointmentInfo {
 	
 	private Long appointmentId;
+    private Long patientId;
     private LocalTime time;
     private LocalTime endTime;
     private Integer durationMinutes;

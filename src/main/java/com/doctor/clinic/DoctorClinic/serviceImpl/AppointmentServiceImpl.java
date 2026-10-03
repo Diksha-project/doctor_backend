@@ -332,7 +332,9 @@ public class AppointmentServiceImpl implements AppointmentService {
 		LocalTime endTime = a.getEndTime() != null ? a.getEndTime()
 				: a.getAppointmentTime().plusMinutes(a.getSlotDurationMinutes());
 
-		return AppointmentInfo.builder().appointmentId(a.getId()).time(a.getAppointmentTime()).endTime(endTime)
+		return AppointmentInfo.builder().appointmentId(a.getId())
+				.patientId(a.getPatient() == null ? null : a.getPatient().getId())
+				.time(a.getAppointmentTime()).endTime(endTime)
 				.durationMinutes(a.getSlotDurationMinutes()).patientName(a.getPatientName())
 				.patientPhone(a.getPatientPhone()).patientAge(a.getPatientAge()).reasonForVisit(a.getReasonForVisit())
 				.fee(a.getConsultationFee()).paymentStatus(a.getPaymentStatus()).build();
