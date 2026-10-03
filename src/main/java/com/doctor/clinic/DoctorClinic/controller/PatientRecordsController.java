@@ -4,6 +4,12 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import jakarta.validation.Valid;
+import com.doctor.clinic.DoctorClinic.entity.Doctor;
+import com.doctor.clinic.DoctorClinic.AIServices.WhatsappServiceImpl;
+import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
+import com.doctor.clinic.DoctorClinic.request.SendPatientChatReplyRequest;
+import com.doctor.clinic.DoctorClinic.serviceImpl.PatientChatHistoryService;
 
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -15,6 +21,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -41,12 +49,19 @@ public class PatientRecordsController {
     private final PatientRepo patientRepo;
     private final AppointmentRepo appointmentRepo;
     private final PatientChatMessageRepo chatMessageRepo;
+    private final DoctorRepo doctorRepo;
+    private final WhatsappServiceImpl whatsappService;
+    private final PatientChatHistoryService chatHistoryService;
 
     public PatientRecordsController(PatientRepo patientRepo, AppointmentRepo appointmentRepo,
-                                    PatientChatMessageRepo chatMessageRepo) {
+                                    PatientChatMessageRepo chatMessageRepo, DoctorRepo doctorRepo,
+                                    WhatsappServiceImpl whatsappService, PatientChatHistoryService chatHistoryService) {
         this.patientRepo = patientRepo;
         this.appointmentRepo = appointmentRepo;
         this.chatMessageRepo = chatMessageRepo;
+        this.doctorRepo = doctorRepo;
+        this.whatsappService = whatsappService;
+        this.chatHistoryService = chatHistoryService;
     }
 
     @GetMapping
@@ -92,6 +107,31 @@ public class PatientRecordsController {
                         row.getHasAttachment(), row.getCreatedAt(), row.getHasAttachment()
                                 ? "/api/patients/" + patientId + "/messages/" + row.getId() + "/attachment"
                                 : null));
+    }
+
+    @PostMapping("/{patientId}/messages/reply")
+    public ResponseEntity<?> sendPatientReply(@PathVariable Long patientId,
+                                               @Valid @RequestBody SendPatientChatReplyRequest request) {
+        Long organizationId = organizationId();
+        Patient patient = patientRepo.findByIdAndOrganizationId(patientId, organizationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found"));
+        Doctor doctor = doctorRepo.findByIdAndOrganizationId(request.getDoctorId(), organizationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found"));
+        if (!doctor.isWhatsappActivated() || doctor.getWhatsappPhoneNumberId() == null
+                || doctor.getWhatsappAccessToken() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Doctor WhatsApp is not configured");
+        }
+
+        String destination = patient.getNormalizedPhone();
+        if (destination.matches("\\d{10}")) destination = "91" + destination;
+        String message = request.getMessage().trim();
+        boolean sent = whatsappService.sendMessage(doctor, destination, message);
+        if (!sent) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                "WhatsApp could not send the reply. Check the WhatsApp connection and retry.");
+
+        chatHistoryService.recordOutbound(patient, doctor, request.getReplyToMessageId(), message);
+        return ResponseEntity.ok(java.util.Map.of("success", true, "patientId", patientId,
+                "doctorId", doctor.getId(), "message", "Reply sent"));
     }
 
     @GetMapping("/{patientId}/messages/{messageId}/attachment")
