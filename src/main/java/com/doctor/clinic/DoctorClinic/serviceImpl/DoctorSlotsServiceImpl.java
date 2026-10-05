@@ -8,6 +8,7 @@ import java.util.List;
 
 import org.springframework.stereotype.Service;
 
+import com.doctor.clinic.DoctorClinic.CustomException.BusinessException;
 import com.doctor.clinic.DoctorClinic.entity.Appointment;
 import com.doctor.clinic.DoctorClinic.entity.Doctor;
 import com.doctor.clinic.DoctorClinic.entity.DoctorSlot;
@@ -33,10 +34,10 @@ public class DoctorSlotsServiceImpl implements DoctorSlotsService {
     private final AppointmentRepo appointmentRepo;
     private final DoctorSlotRepo doctorSlotRepo;
     
-    public DoctorSlotsDashboardResponse getDoctorSlotsDashboard(Long doctorId) {
+    public DoctorSlotsDashboardResponse getDoctorSlotsDashboard(Long doctorId, Long organizationId) {
         
-        Doctor doctor = doctorRepo.findById(doctorId)
-            .orElseThrow(() -> new RuntimeException("Doctor not found"));
+        Doctor doctor = doctorRepo.findByIdAndOrganizationId(doctorId, organizationId)
+            .orElseThrow(() -> BusinessException.notFound("Doctor", doctorId));
         
         LocalDate today = LocalDate.now();
         LocalTime currentTime = LocalTime.now();

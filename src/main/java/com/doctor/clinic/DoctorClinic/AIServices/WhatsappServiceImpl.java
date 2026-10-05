@@ -23,6 +23,7 @@ public class WhatsappServiceImpl {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public record DownloadedMedia(byte[] bytes, String mimeType) {}
+    public record SendResult(boolean sent, String providerMessageId) {}
 
     /** Downloads an incoming WhatsApp attachment using Meta's media URL flow. */
     public DownloadedMedia downloadMedia(String mediaId, String accessToken) {
@@ -67,6 +68,10 @@ public class WhatsappServiceImpl {
             Doctor doctor,
             String toNumber,
             String message) {
+        return sendMessageWithResult(doctor, toNumber, message).sent();
+    }
+
+    public SendResult sendMessageWithResult(Doctor doctor, String toNumber, String message) {
 
         /*
          * =====================================================
@@ -94,7 +99,7 @@ public class WhatsappServiceImpl {
                     + "for Doctor ID = "
                     + doctor.getId());
 
-            return false;
+            return new SendResult(false, null);
         }
 
         if (accessToken == null
@@ -105,7 +110,7 @@ public class WhatsappServiceImpl {
                     + "for Doctor ID = "
                     + doctor.getId());
 
-            return false;
+            return new SendResult(false, null);
         }
 
         /*
@@ -216,13 +221,16 @@ public class WhatsappServiceImpl {
                             .bodyToMono(String.class)
                             .block();
 
-            System.out.println(
-                    "WhatsApp API Response = "
-                    + response);
-
-            System.out.println(
-                    "WhatsApp message sent successfully");
-            return true;
+            String providerMessageId = null;
+            if (response != null) {
+                try {
+                    providerMessageId = objectMapper.readTree(response)
+                            .path("messages").path(0).path("id").asText(null);
+                } catch (Exception ignored) {
+                    // A successful send remains successful if Meta omits an optional response ID.
+                }
+            }
+            return new SendResult(true, providerMessageId);
 
         } catch (WebClientResponseException e) {
 
@@ -239,19 +247,12 @@ public class WhatsappServiceImpl {
                     "HTTP Status = "
                     + e.getStatusCode());
 
-            System.err.println(
-                    "Response Body = "
-                    + e.getResponseBodyAsString());
-            return false;
+            return new SendResult(false, null);
 
         } catch (Exception e) {
 
-            System.err.println(
-                    "Error sending WhatsApp message = "
-                    + e.getMessage());
-
-            e.printStackTrace();
-            return false;
+            System.err.println("Error sending WhatsApp message");
+            return new SendResult(false, null);
         }
     }
 

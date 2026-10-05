@@ -32,6 +32,8 @@ public interface PatientChatMessageRepo extends JpaRepository<PatientChatMessage
 
     List<HistoryRow> findByPatientIdOrderByCreatedAtDesc(Long patientId, Pageable pageable);
 
+    org.springframework.data.domain.Page<PatientChatMessage> findAllByOrderByIdAsc(Pageable pageable);
+
     @Query("select m.id as id, m.direction as direction, m.messageText as messageText, "
             + "m.messageType as messageType, m.attachmentMimeType as attachmentMimeType, "
             + "m.attachmentName as attachmentName, m.createdAt as createdAt, "

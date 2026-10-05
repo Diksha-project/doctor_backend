@@ -8,6 +8,6 @@ public interface DoctorSlotsService {
 	
 	//private SlotDetail mapToSlotDetail(Appointment appointment) ;
 	
-	 public DoctorSlotsDashboardResponse getDoctorSlotsDashboard(Long doctorId);
+	 public DoctorSlotsDashboardResponse getDoctorSlotsDashboard(Long doctorId, Long organizationId);
 
 }

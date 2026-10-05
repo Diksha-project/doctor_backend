@@ -1,6 +1,9 @@
 package com.doctor.clinic.DoctorClinic.controller;
 
 import java.util.Optional;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +25,8 @@ import com.doctor.clinic.DoctorClinic.serviceImpl.IntentDetector;
 import com.doctor.clinic.DoctorClinic.serviceImpl.PatientChatHistoryService;
 import com.doctor.clinic.DoctorClinic.serviceImpl.PatientProfileService;
 import com.doctor.clinic.DoctorClinic.serviceImpl.AppointmentBookingChatService;
+import com.doctor.clinic.DoctorClinic.service.WhatsAppAutomationService;
+import com.doctor.clinic.DoctorClinic.serviceImpl.WhatsAppConversationServiceImpl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -41,6 +46,8 @@ public class WebhookController {
     private final PatientProfileService patientProfileService;
     private final PatientChatHistoryService patientChatHistoryService;
     private final AppointmentBookingChatService appointmentBookingChatService;
+    private final WhatsAppConversationServiceImpl whatsappConversationService;
+    private final WhatsAppAutomationService whatsappAutomationService;
 
     public WebhookController(
             DoctorRepo doctorRepo,
@@ -51,7 +58,9 @@ public class WebhookController {
             ProcessedWhatsappMessageRepo processedMessageRepo,
             PatientProfileService patientProfileService,
             PatientChatHistoryService patientChatHistoryService,
-            AppointmentBookingChatService appointmentBookingChatService) {
+            AppointmentBookingChatService appointmentBookingChatService,
+            WhatsAppConversationServiceImpl whatsappConversationService,
+            WhatsAppAutomationService whatsappAutomationService) {
 
         this.doctorRepo = doctorRepo;
         this.aiService = aiService;
@@ -62,6 +71,8 @@ public class WebhookController {
         this.patientProfileService = patientProfileService;
         this.patientChatHistoryService = patientChatHistoryService;
         this.appointmentBookingChatService = appointmentBookingChatService;
+        this.whatsappConversationService = whatsappConversationService;
+        this.whatsappAutomationService = whatsappAutomationService;
     }
 
     /*
@@ -149,6 +160,16 @@ public class WebhookController {
                     if (!changes.isArray()) continue;
                     for (JsonNode change : changes) {
                         JsonNode value = change.path("value");
+                        JsonNode statuses = value.path("statuses");
+                        if (statuses.isArray()) {
+                            for (JsonNode status : statuses) {
+                                try {
+                                    processMessageStatus(status);
+                                } catch (Exception e) {
+                                    System.err.println("Could not process WhatsApp status callback: " + e.getMessage());
+                                }
+                            }
+                        }
                         JsonNode messages = value.path("messages");
                         if (!messages.isArray()) continue; // status callbacks have no messages
                         for (JsonNode message : messages) {
@@ -203,77 +224,57 @@ public class WebhookController {
         String contactName = findContactName(value, fromNumber);
         Patient patient = patientProfileService.upsert(doctor.getOrganization(), fromNumber,
                 contactName, null, null, null);
-        String recentHistory = patientChatHistoryService.recentPromptContext(patient.getId());
-        String interactiveId = extractInteractiveId(message);
-        if ("text".equals(type) || "interactive".equals(type) || "button".equals(type)) {
-            Optional<AppointmentBookingChatService.Reply> booking = appointmentBookingChatService.handle(doctor, patient, text, interactiveId);
-            if (booking.isPresent()) {
-                patientChatHistoryService.recordInbound(patient, doctor, messageId, type, text, null, null, null);
-                AppointmentBookingChatService.Reply reply = booking.get();
-                boolean sent = reply.interactive() == null
-                        ? whatsAppService.sendMessage(doctor, fromNumber, reply.text())
-                        : whatsAppService.sendInteractiveMessage(doctor, fromNumber, reply.interactive());
-                if (sent) patientChatHistoryService.recordOutbound(patient, doctor, messageId, reply.text());
-                return;
-            }
-        }
-        String response;
-        byte[] attachmentData = null;
-        String attachmentMimeType = null;
+
+        String mediaId = null;
+        String mimeType = null;
         String attachmentName = null;
-        String storedInboundText = text;
         if (isMediaMessage(type)) {
             JsonNode mediaNode = message.path(type);
-            String mediaId = mediaNode.path("id").asText(null);
-            String caption = mediaNode.path("caption").asText("");
-            storedInboundText = caption.isBlank() ? "[Sent a " + type + " attachment]" : caption;
-            attachmentMimeType = mediaNode.path("mime_type").asText(null);
-            attachmentName = mediaNode.path("filename").asText(null);
-            try {
-                if (mediaId == null || mediaId.isBlank()) {
-                    throw new IllegalArgumentException("Media ID missing");
-                }
-                WhatsappServiceImpl.DownloadedMedia media =
-                        whatsAppService.downloadMedia(mediaId, doctor.getWhatsappAccessToken());
-                attachmentData = media.bytes();
-                attachmentMimeType = media.mimeType();
-                if (!isGeminiSupportedMedia(media.mimeType())) {
-                    response = "I received the attachment, but its file type can't be read here. Please send an image, voice note, video, or PDF, or paste the relevant text.";
-                } else {
-                    String mediaPrompt = caption.isBlank()
-                            ? "The patient sent a " + type + " attachment. Please understand it and help with its clinic-related content."
-                            : "The patient sent a " + type + " attachment with this message: " + caption;
-                    response = aiService.generateResponse(mediaPrompt, doctor, recentHistory,
-                            media.bytes(), media.mimeType());
-                }
-            } catch (Exception e) {
-                System.err.println("Could not process WhatsApp " + type + " attachment: " + e.getMessage());
-                response = "I received your attachment, but couldn't open it just now. Please try again or send your question as text.";
-            }
-        } else if (text == null) {
-            response = unsupportedMessageReply(type);
-            if (storedInboundText == null) storedInboundText = "[Sent a " + type + " message]";
-        } else {
-            Intent intent = intentDetector.detect(text);
-            if (intent == Intent.GREETING) {
-                response = "Hello! I am " + doctor.getFullName()
-                        + "'s virtual assistant. How can I help you with the clinic?";
-            } else if (intent == Intent.THANKS) {
-                response = "You're welcome! Is there anything else I can help you with?";
-            } else if (intent == Intent.GOODBYE) {
-                response = "Thank you for contacting the clinic. Have a great day!";
-            } else {
-                response = aiService.generateResponse(text, doctor, recentHistory, null, null);
-            }
+            mediaId = nonBlank(mediaNode.path("id").asText(null));
+            mimeType = nonBlank(mediaNode.path("mime_type").asText(null));
+            attachmentName = nonBlank(mediaNode.path("filename").asText(null));
         }
 
-        patientChatHistoryService.recordInbound(patient, doctor, messageId, type,
-                storedInboundText, attachmentMimeType, attachmentName, attachmentData);
+        whatsappConversationService.recordInboundMessage(
+                doctor.getOrganization().getId(),
+                patient,
+                doctor,
+                fromNumber,
+                messageId,
+                text,
+                type);
+        patientChatHistoryService.recordInbound(
+                patient, doctor, messageId, type, text, mimeType, attachmentName, null);
 
-        if (response != null && !response.isBlank()
-                && whatsAppService.sendMessage(doctor, fromNumber, response)) {
-            patientChatHistoryService.recordOutbound(patient, doctor, messageId, response);
+        whatsappAutomationService.processInboundAsync(
+                doctor.getOrganization().getId(),
+                doctor.getId(),
+                patient.getId(),
+                fromNumber,
+                text,
+                type,
+                mediaId,
+                mimeType,
+                attachmentName);
+    }
+
+    private void processMessageStatus(JsonNode statusNode) {
+        String providerMessageId = nonBlank(statusNode.path("id").asText(null));
+        String providerStatus = nonBlank(statusNode.path("status").asText(null));
+        if (providerMessageId == null || providerStatus == null) {
+            return;
         }
+
+        long epochSeconds = statusNode.path("timestamp").asLong(0);
+        LocalDateTime statusAt = epochSeconds > 0
+                ? LocalDateTime.ofInstant(Instant.ofEpochSecond(epochSeconds), ZoneId.systemDefault())
+                : LocalDateTime.now();
+        JsonNode firstError = statusNode.path("errors").path(0);
+        String error = nonBlank(firstError.path("title").asText(null));
+        if (error == null) {
+            error = nonBlank(firstError.path("message").asText(null));
+        }
+        whatsappConversationService.updateDeliveryStatus(providerMessageId, providerStatus, statusAt, error);
     }
 
     private String findContactName(JsonNode value, String fromNumber) {
