@@ -26,6 +26,7 @@ private final JwtAuthenticationFilter jwtAuthenticationFilter;
                 .requestMatchers("/org/register").permitAll()
                 .requestMatchers("/webhook/whatsapp").permitAll()
                 .requestMatchers("/webhook/health").permitAll()
+                .requestMatchers("/ws/chat").permitAll()
                 .anyRequest().authenticated()
             )
             .sessionManagement(session -> session
