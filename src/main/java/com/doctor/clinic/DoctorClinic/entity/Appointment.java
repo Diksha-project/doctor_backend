@@ -71,7 +71,11 @@ public class Appointment {
     
     @Column(name = "appointment_type")
     private String appointmentType; // CONSULTATION, FOLLOW_UP, EMERGENCY, TELEMEDICINE
-    
+
+    @Column(name = "booked_via")
+    @Builder.Default
+    private String bookedVia = "WEB"; // WEB, WHATSAPP, CALL
+
     @Column(name = "reason_for_visit")
     private String reasonForVisit;
     

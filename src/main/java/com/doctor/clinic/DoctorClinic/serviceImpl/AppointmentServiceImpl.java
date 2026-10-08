@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,15 +15,22 @@ import org.springframework.stereotype.Service;
 
 import com.doctor.clinic.DoctorClinic.entity.Appointment;
 import com.doctor.clinic.DoctorClinic.entity.Doctor;
+import com.doctor.clinic.DoctorClinic.entity.DoctorAvailabilityException;
+import com.doctor.clinic.DoctorClinic.entity.DoctorAvailabilitySettings;
 import com.doctor.clinic.DoctorClinic.entity.DoctorSlot;
 import com.doctor.clinic.DoctorClinic.entity.Patient;
+import com.doctor.clinic.DoctorClinic.model.AvailabilityExceptionType;
 import com.doctor.clinic.DoctorClinic.repo.AppointmentRepo;
+import com.doctor.clinic.DoctorClinic.repo.DoctorAvailabilityExceptionRepo;
+import com.doctor.clinic.DoctorClinic.repo.DoctorAvailabilitySettingsRepo;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
 import com.doctor.clinic.DoctorClinic.repo.DoctorSlotRepo;
 import com.doctor.clinic.DoctorClinic.request.BookAppointmentRequest;
 import com.doctor.clinic.DoctorClinic.request.UpdateStatusRequest;
 import com.doctor.clinic.DoctorClinic.response.AppointmentDashboardResponse;
 import com.doctor.clinic.DoctorClinic.response.AppointmentInfo;
+import com.doctor.clinic.DoctorClinic.response.AppointmentListItemResponse;
+import com.doctor.clinic.DoctorClinic.response.AppointmentListResponse;
 import com.doctor.clinic.DoctorClinic.response.AppointmentSummary;
 import com.doctor.clinic.DoctorClinic.response.BookAppointmentResponse;
 import com.doctor.clinic.DoctorClinic.service.AppointmentService;
@@ -45,13 +53,22 @@ public class AppointmentServiceImpl implements AppointmentService {
 	private DoctorSlotRepo doctorSlotRepo;
 
 	@Autowired
+	private DoctorAvailabilitySettingsRepo doctorAvailabilitySettingsRepo;
+
+	@Autowired
+	private DoctorAvailabilityExceptionRepo doctorAvailabilityExceptionRepo;
+
+	@Autowired
 	private PatientProfileService patientProfileService;
 
 	@Transactional
 	public BookAppointmentResponse bookAppointment(BookAppointmentRequest request) {
 
-		// 1. Validate doctor exists
-		Doctor doctor = doctorRepo.findById(request.getDoctorId())
+		// 1. Validate doctor exists. Lock the doctor row for the duration of this
+		// transaction so concurrent booking requests for the same doctor are
+		// serialized - this prevents two requests racing on the same slot or both
+		// slipping past the daily-appointment-limit check at once.
+		Doctor doctor = doctorRepo.findByIdForUpdate(request.getDoctorId())
 				.orElseThrow(() -> new RuntimeException("Doctor not found with ID: " + request.getDoctorId()));
 
 		// 2. Check if doctor is active
@@ -59,8 +76,19 @@ public class AppointmentServiceImpl implements AppointmentService {
 			throw new RuntimeException("Doctor is not available for appointments");
 		}
 
-		// 3. Get doctor's default slot duration (5, 15, 30, 60 minutes)
-		Integer slotDuration = doctor.getDefaultSlotDurationMinutes();
+		// 3. Determine the appointment duration. If a slot was already generated
+		// for this exact date/time (the normal path once a doctor has configured
+		// availability), its duration is the source of truth, since that's the
+		// grid the patient was shown. Otherwise fall back to the doctor's
+		// configured settings, then the legacy per-doctor default, then a hard
+		// default - preserving behaviour for doctors without availability set up.
+		DoctorSlot slot = doctorSlotRepo.findByDoctorIdAndSlotDateAndStartTime(doctor.getId(),
+				request.getAppointmentDate(), request.getAppointmentTime()).orElse(null);
+
+		Integer slotDuration = slot != null && slot.getDurationMinutes() != null ? slot.getDurationMinutes()
+				: doctorAvailabilitySettingsRepo.findByDoctorId(doctor.getId())
+						.map(DoctorAvailabilitySettings::getAppointmentDurationMinutes)
+						.orElse(doctor.getDefaultSlotDurationMinutes());
 		if (slotDuration == null) {
 			slotDuration = 30; // Default fallback to 30 minutes
 		}
@@ -86,10 +114,21 @@ public class AppointmentServiceImpl implements AppointmentService {
 			throw new RuntimeException("This time overlaps with another appointment. Please choose another time.");
 		}
 
-		// 7. Check and update slot availability
-		DoctorSlot slot = doctorSlotRepo.findByDoctorIdAndSlotDateAndStartTime(doctor.getId(),
-				request.getAppointmentDate(), request.getAppointmentTime()).orElse(null);
+		// 6b. Enforce the doctor's configured daily appointment limit (from
+		// DoctorAvailabilitySettings, or a date-specific exception override). Held
+		// under the doctor row lock above, so this check is race-safe.
+		Integer maxAppointmentsPerDay = resolveMaxAppointmentsPerDay(doctor.getId(), request.getAppointmentDate());
+		if (maxAppointmentsPerDay != null) {
+			long activeAppointmentsToday = appointmentRepo.countActiveByDoctorIdAndAppointmentDate(doctor.getId(),
+					request.getAppointmentDate());
+			if (activeAppointmentsToday >= maxAppointmentsPerDay) {
+				throw new RuntimeException("Doctor has reached the maximum number of appointments for "
+						+ request.getAppointmentDate() + ". Please choose another date.");
+			}
+		}
 
+		// 7. Check and update slot availability (slot was already looked up above
+		// when determining duration)
 		if (slot != null && !slot.hasAvailability()) {
 			throw new RuntimeException("This time slot is fully booked. Please choose another time.");
 		}
@@ -125,6 +164,8 @@ public class AppointmentServiceImpl implements AppointmentService {
 				.consultationFee(doctor.getConsultationFee()).finalAmount(finalAmount).paymentStatus("PENDING")
 				.paymentMethod(request.getPaymentMethod()).appointmentStatus("SCHEDULED")
 				.appointmentType(request.getAppointmentType() == null ? "CONSULTATION" : request.getAppointmentType())
+				.bookedVia(request.getBookedVia() == null || request.getBookedVia().isBlank() ? "WEB"
+						: request.getBookedVia().toUpperCase())
 				.reasonForVisit(request.getReasonForVisit()).symptoms(request.getSymptoms()).createdBy("PATIENT")
 				.build();
 
@@ -209,6 +250,29 @@ public class AppointmentServiceImpl implements AppointmentService {
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Returns the max number of appointments the doctor accepts on this date, or
+	 * {@code null} if no availability settings/exception apply (legacy
+	 * behaviour: unlimited, preserved for doctors who haven't configured
+	 * availability yet).
+	 */
+	private Integer resolveMaxAppointmentsPerDay(Long doctorId, LocalDate date) {
+		DoctorAvailabilityException exception = doctorAvailabilityExceptionRepo
+				.findByDoctorIdAndExceptionDate(doctorId, date).orElse(null);
+		if (exception != null) {
+			if (exception.getExceptionType() == AvailabilityExceptionType.DAY_OFF) {
+				return 0;
+			}
+			if (exception.getExceptionType() == AvailabilityExceptionType.CUSTOM_LIMIT
+					&& exception.getMaxAppointments() != null) {
+				return exception.getMaxAppointments();
+			}
+		}
+		return doctorAvailabilitySettingsRepo.findByDoctorId(doctorId)
+				.map(DoctorAvailabilitySettings::getMaxAppointmentsPerDay)
+				.orElse(null);
 	}
 
 	private static final String[] ALLOWED_STATUS = { "SCHEDULED", "CONFIRMED", "COMPLETED", "CANCELLED", "NO_SHOW" };
@@ -326,6 +390,51 @@ public class AppointmentServiceImpl implements AppointmentService {
 				.doctorSpecialization(doctor.getSpecialization()).today(today).currentTime(now.toString())
 				.scheduled(scheduled).confirmed(confirmed).completed(completed).cancelled(cancelled).noShow(noShow)
 				.summary(summary).build();
+	}
+
+	@Override
+	public AppointmentListResponse listForDoctor(Long doctorId, LocalDate from, LocalDate to, String search,
+			String status) {
+		LocalDate rangeFrom = from != null ? from : LocalDate.now().withDayOfMonth(1);
+		LocalDate rangeTo = to != null ? to : rangeFrom.plusMonths(1).minusDays(1);
+
+		List<Appointment> appointments = appointmentRepo.findByDoctorIdAndAppointmentDateBetween(doctorId, rangeFrom,
+				rangeTo);
+
+		String normalizedSearch = search == null ? null : search.trim().toLowerCase();
+		String normalizedStatus = status == null || status.isBlank() ? null : status.trim().toUpperCase();
+
+		List<Appointment> filtered = appointments.stream()
+				.filter(a -> normalizedStatus == null || normalizedStatus.equals(a.getAppointmentStatus()))
+				.filter(a -> normalizedSearch == null
+						|| (a.getPatientName() != null && a.getPatientName().toLowerCase().contains(normalizedSearch))
+						|| (a.getPatientPhone() != null && a.getPatientPhone().contains(normalizedSearch))
+						|| String.valueOf(a.getId()).contains(normalizedSearch))
+				.sorted(Comparator.comparing(Appointment::getAppointmentDate)
+						.thenComparing(Appointment::getAppointmentTime).reversed())
+				.toList();
+
+		List<AppointmentListItemResponse> items = filtered.stream().map(this::mapToListItem).toList();
+
+		long completed = appointments.stream().filter(a -> "COMPLETED".equals(a.getAppointmentStatus())).count();
+		long cancelled = appointments.stream().filter(a -> "CANCELLED".equals(a.getAppointmentStatus())).count();
+		long upcoming = appointments.stream()
+				.filter(a -> "SCHEDULED".equals(a.getAppointmentStatus()) || "CONFIRMED".equals(a.getAppointmentStatus()))
+				.count();
+
+		return AppointmentListResponse.builder().items(items).totalBooked(appointments.size()).completed(completed)
+				.upcoming(upcoming).cancelled(cancelled).build();
+	}
+
+	private AppointmentListItemResponse mapToListItem(Appointment a) {
+		LocalTime endTime = a.getEndTime() != null ? a.getEndTime()
+				: a.getAppointmentTime().plusMinutes(a.getSlotDurationMinutes());
+		return AppointmentListItemResponse.builder().appointmentId(a.getId()).appointmentDate(a.getAppointmentDate())
+				.appointmentTime(a.getAppointmentTime()).endTime(endTime).durationMinutes(a.getSlotDurationMinutes())
+				.patientName(a.getPatientName()).patientPhone(a.getPatientPhone())
+				.appointmentType(a.getAppointmentType()).appointmentStatus(a.getAppointmentStatus())
+				.bookedVia(a.getBookedVia() == null ? "WEB" : a.getBookedVia())
+				.notes(a.getReasonForVisit()).build();
 	}
 
 	private AppointmentInfo mapToAppointmentInfo(Appointment a) {

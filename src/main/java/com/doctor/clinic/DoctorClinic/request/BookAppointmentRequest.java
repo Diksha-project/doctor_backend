@@ -38,5 +38,7 @@ public class BookAppointmentRequest {
 	    
 	    @NotBlank(message = "Payment method is required")
 	    private String paymentMethod; // CASH, CARD, UPI, ONLINE
-	
+
+	    private String bookedVia; // WEB, WHATSAPP, CALL - defaults to WEB when omitted
+
 }

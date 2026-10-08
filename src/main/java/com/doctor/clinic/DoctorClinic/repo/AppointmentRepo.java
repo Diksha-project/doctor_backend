@@ -92,6 +92,11 @@ public interface AppointmentRepo extends JpaRepository<Appointment, Long> {
 
 	@Query("SELECT COUNT(a) FROM Appointment a WHERE a.doctor.id = :doctorId AND a.appointmentDate = :date")
     int countByDoctorIdAndAppointmentDate(@Param("doctorId") Long doctorId, @Param("date") LocalDate date);
+
+	// Used to enforce the doctor's max-appointments-per-day availability setting;
+	// cancelled/no-show appointments free up the daily quota.
+	@Query("SELECT COUNT(a) FROM Appointment a WHERE a.doctor.id = :doctorId AND a.appointmentDate = :date AND a.appointmentStatus NOT IN ('CANCELLED', 'NO_SHOW')")
+	long countActiveByDoctorIdAndAppointmentDate(@Param("doctorId") Long doctorId, @Param("date") LocalDate date);
     
     @Query("SELECT COALESCE(SUM(a.consultationFee), 0) FROM Appointment a WHERE a.doctor.id = :doctorId AND a.appointmentDate = :date AND a.paymentStatus = 'PAID'")
     BigDecimal sumEarningsByDoctorIdAndDate(@Param("doctorId") Long doctorId, @Param("date") LocalDate date);

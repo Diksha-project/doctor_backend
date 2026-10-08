@@ -1,7 +1,9 @@
 package com.doctor.clinic.DoctorClinic.serviceImpl;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.scheduling.annotation.Async;
@@ -39,6 +41,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
     private final IntentDetector intentDetector;
     private final AppointmentBookingChatService appointmentBookingChatService;
     private final WhatsAppConversationServiceImpl conversationService;
+    private final BookingRequestService bookingRequestService;
 
     public WhatsAppAutomationServiceImpl(DoctorRepo doctorRepo,
                                         PatientRepo patientRepo,
@@ -48,7 +51,8 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                                         GeminiServiceLatest geminiServiceLatest,
                                         IntentDetector intentDetector,
                                         AppointmentBookingChatService appointmentBookingChatService,
-                                        WhatsAppConversationServiceImpl conversationService) {
+                                        WhatsAppConversationServiceImpl conversationService,
+                                        BookingRequestService bookingRequestService) {
         this.doctorRepo = doctorRepo;
         this.patientRepo = patientRepo;
         this.conversationRepo = conversationRepo;
@@ -58,12 +62,14 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
         this.intentDetector = intentDetector;
         this.appointmentBookingChatService = appointmentBookingChatService;
         this.conversationService = conversationService;
+        this.bookingRequestService = bookingRequestService;
     }
 
     @Override
     @Async("whatsappTaskExecutor")
     public void processInboundAsync(Long organizationId, Long doctorId, Long patientId, String phoneNumber,
-                                   String messageText, String messageType, String mediaId, String mimeType, String attachmentName) {
+                                   String messageText, String messageType, String mediaId, String mimeType, String attachmentName,
+                                   String selectionId) {
         try {
             Doctor doctor = doctorRepo.findById(doctorId).orElse(null);
             if (doctor == null || !doctor.getOrganization().getId().equals(organizationId)) {
@@ -87,14 +93,16 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                 return;
             }
 
-            String response = resolveResponse(doctor, patient, conversation, messageText, messageType, mediaId, mimeType, attachmentName);
+            Map<String, Object> interactive = new HashMap<>();
+            String response = resolveResponse(doctor, patient, conversation, messageText, messageType, mediaId, mimeType, attachmentName,
+                    selectionId, interactive);
             if (response == null || response.isBlank()) {
                 log.info("No outbound response generated for conversation {}", conversation.getId());
                 return;
             }
 
             boolean sent = conversationService.sendAutomatedMessage(
-                    organizationId, patient, doctor, phoneNumber, response);
+                    organizationId, patient, doctor, phoneNumber, response, interactive.isEmpty() ? null : interactive);
             if (sent) {
                 log.info("Outbound WhatsApp response sent for conversation {}", conversation.getId());
             } else {
@@ -107,10 +115,22 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
     }
 
     private String resolveResponse(Doctor doctor, Patient patient, WhatsAppConversation conversation, String messageText,
-                                  String messageType, String mediaId, String mimeType, String attachmentName) {
+                                  String messageType, String mediaId, String mimeType, String attachmentName,
+                                  String selectionId, Map<String, Object> interactiveOut) {
         String normalized = normalize(messageText);
         if (normalized == null || normalized.isBlank()) {
             return null;
+        }
+
+        if (selectionId != null && selectionId.startsWith("offer_")) {
+            String[] parts = selectionId.split("_");
+            if (parts.length == 3) {
+                try {
+                    return bookingRequestService.confirmOffer(Long.parseLong(parts[1]), Long.parseLong(parts[2]));
+                } catch (NumberFormatException ignored) {
+                    // fall through to normal handling below
+                }
+            }
         }
 
         WhatsAppResponseRule rule = findMatchingRule(doctor, conversation.getOrganization(), normalized);
@@ -123,8 +143,11 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
             return "Thanks for reaching out. Our team has been notified and will get back to you shortly.";
         }
 
-        Optional<AppointmentBookingChatService.Reply> bookingReply = appointmentBookingChatService.handle(doctor, patient, normalized, null);
+        Optional<AppointmentBookingChatService.Reply> bookingReply = appointmentBookingChatService.handle(doctor, patient, normalized, selectionId);
         if (bookingReply.isPresent()) {
+            if (bookingReply.get().interactive() != null) {
+                interactiveOut.putAll(bookingReply.get().interactive());
+            }
             return bookingReply.get().text();
         }
 

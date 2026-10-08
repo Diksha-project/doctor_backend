@@ -25,6 +25,8 @@ public interface DoctorSlotRepo extends JpaRepository<DoctorSlot, Long> {
 			@Param("startTime") LocalTime startTime, @Param("endTime") LocalTime endTime);
 
 	List<DoctorSlot> findByDoctorIdAndSlotDateBetweenAndIsAvailableTrue(Long id, LocalDate today, LocalDate nextWeek);
+
+	List<DoctorSlot> findByDoctorIdAndSlotDateBetween(Long doctorId, LocalDate startDate, LocalDate endDate);
 //
 //	@Query("SELECT COUNT(s) FROM DoctorSlot s WHERE s.doctor.id = :doctorId AND s.slotDate = :date AND s.isAvailable = true")
 //	int countAvailableSlotsByDoctorIdAndDate(@Param("doctorId") Long doctorId, @Param("date") LocalDate date);

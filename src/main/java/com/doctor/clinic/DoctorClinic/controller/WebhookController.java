@@ -255,7 +255,8 @@ public class WebhookController {
                 type,
                 mediaId,
                 mimeType,
-                attachmentName);
+                attachmentName,
+                extractInteractiveId(message));
     }
 
     private void processMessageStatus(JsonNode statusNode) {

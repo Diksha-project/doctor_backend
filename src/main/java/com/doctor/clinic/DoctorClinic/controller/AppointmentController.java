@@ -20,6 +20,7 @@ import com.doctor.clinic.DoctorClinic.model.ApiResponse;
 import com.doctor.clinic.DoctorClinic.request.BookAppointmentRequest;
 import com.doctor.clinic.DoctorClinic.request.UpdateStatusRequest;
 import com.doctor.clinic.DoctorClinic.response.AppointmentDashboardResponse;
+import com.doctor.clinic.DoctorClinic.response.AppointmentListResponse;
 import com.doctor.clinic.DoctorClinic.response.BookAppointmentResponse;
 import com.doctor.clinic.DoctorClinic.response.DoctorPatientDashboardResponse;
 import com.doctor.clinic.DoctorClinic.entity.Appointment;
@@ -93,6 +94,16 @@ public class AppointmentController {
 		LocalDate dashboardDate = date == null ? LocalDate.now() : date;
 		return ResponseEntity.ok(doctorPatientDashboardService.getPatientsForDate(
 				doctorId, organizationId(), dashboardDate));
+	}
+
+	@GetMapping("/{doctorId}/list")
+	public ResponseEntity<ApiResponse<AppointmentListResponse>> listAppointments(@PathVariable Long doctorId,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+			@RequestParam(required = false) String search,
+			@RequestParam(required = false) String status) {
+		requireDoctorInOrganization(doctorId, organizationId());
+		return ResponseEntity.ok(ApiResponse.success(appointmentService.listForDoctor(doctorId, from, to, search, status)));
 	}
 
 	private Long organizationId() {

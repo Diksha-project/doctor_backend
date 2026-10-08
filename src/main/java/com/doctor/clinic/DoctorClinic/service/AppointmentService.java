@@ -1,10 +1,12 @@
 package com.doctor.clinic.DoctorClinic.service;
 
+import java.time.LocalDate;
 import java.util.Map;
 
 import com.doctor.clinic.DoctorClinic.request.BookAppointmentRequest;
 import com.doctor.clinic.DoctorClinic.request.UpdateStatusRequest;
 import com.doctor.clinic.DoctorClinic.response.AppointmentDashboardResponse;
+import com.doctor.clinic.DoctorClinic.response.AppointmentListResponse;
 import com.doctor.clinic.DoctorClinic.response.BookAppointmentResponse;
 
 import jakarta.validation.Valid;
@@ -20,4 +22,8 @@ public interface AppointmentService {
 
 	AppointmentDashboardResponse getAppointmentDashboard(Long doctorId);
 
+	AppointmentListResponse listForDoctor(Long doctorId, LocalDate from, LocalDate to, String search,
+			String status);
+
 }
+

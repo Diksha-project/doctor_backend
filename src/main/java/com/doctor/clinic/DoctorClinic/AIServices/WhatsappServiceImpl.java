@@ -257,16 +257,28 @@ public class WhatsappServiceImpl {
     }
 
     public boolean sendInteractiveMessage(Doctor doctor, String toNumber, Map<String, Object> interactive) {
+        return sendInteractiveWithResult(doctor, toNumber, interactive).sent();
+    }
+
+    public SendResult sendInteractiveWithResult(Doctor doctor, String toNumber, Map<String, Object> interactive) {
         String url = "https://graph.facebook.com/" + graphVersion + "/" + doctor.getWhatsappPhoneNumberId() + "/messages";
         Map<String,Object> body = new HashMap<>();
         body.put("messaging_product", "whatsapp"); body.put("to", toNumber); body.put("type", "interactive"); body.put("interactive", interactive);
         try {
-            webClient.post().uri(url).header("Authorization", "Bearer " + doctor.getWhatsappAccessToken())
+            String response = webClient.post().uri(url).header("Authorization", "Bearer " + doctor.getWhatsappAccessToken())
                     .header("Content-Type", "application/json").bodyValue(body).retrieve().bodyToMono(String.class).block();
-            return true;
+            String providerMessageId = null;
+            if (response != null) {
+                try {
+                    providerMessageId = objectMapper.readTree(response).path("messages").path(0).path("id").asText(null);
+                } catch (Exception ignored) {
+                    // A successful send remains successful if Meta omits an optional response ID.
+                }
+            }
+            return new SendResult(true, providerMessageId);
         } catch (Exception e) {
             System.err.println("Could not send WhatsApp interactive message: " + e.getMessage());
-            return false;
+            return new SendResult(false, null);
         }
     }
 }

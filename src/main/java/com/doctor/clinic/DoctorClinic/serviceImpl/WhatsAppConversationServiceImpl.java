@@ -124,7 +124,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
         }
 
         MessageType type = messageType == null ? MessageType.TEXT : MessageType.valueOf(messageType.toUpperCase());
-        WhatsAppMessage message = sendPersistedOutbound(conversation, trimmed, type, false);
+        WhatsAppMessage message = sendPersistedOutbound(conversation, trimmed, type, false, null);
 
         Map<String, Object> result = new HashMap<>();
         result.put("messageId", message.getId());
@@ -136,17 +136,24 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
     @Transactional
     public boolean sendAutomatedMessage(Long organizationId, Patient patient, Doctor doctor,
                                         String phoneNumber, String content) {
+        return sendAutomatedMessage(organizationId, patient, doctor, phoneNumber, content, null);
+    }
+
+    /** Sends an AI reply; when {@code interactive} is set it is sent as a button/list message, falling back to plain text. */
+    public boolean sendAutomatedMessage(Long organizationId, Patient patient, Doctor doctor,
+                                        String phoneNumber, String content, Map<String, Object> interactive) {
         WhatsAppConversation conversation = findOrCreateConversation(organizationId, patient, phoneNumber, doctor);
         if (conversation.getStatus() == ConversationStatus.CLOSED
                 || !conversation.isAiEnabled() || conversation.isHumanTakeover()) {
             return false;
         }
-        WhatsAppMessage message = sendPersistedOutbound(conversation, content, MessageType.TEXT, true);
+        WhatsAppMessage message = sendPersistedOutbound(conversation, content, MessageType.TEXT, true, interactive);
         return message.getStatus() == MessageStatus.SENT;
     }
 
     private WhatsAppMessage sendPersistedOutbound(WhatsAppConversation conversation, String content,
-                                                   MessageType type, boolean aiGenerated) {
+                                                   MessageType type, boolean aiGenerated,
+                                                   Map<String, Object> interactive) {
         WhatsAppMessage message = new WhatsAppMessage();
         message.setConversation(conversation);
         message.setOrganization(conversation.getOrganization());
@@ -162,8 +169,15 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
         message = messageRepo.saveAndFlush(message);
         publishMessageEvent(message, "MESSAGE_CREATED");
 
-        WhatsappServiceImpl.SendResult sendResult = whatsappService.sendMessageWithResult(
-                conversation.getDoctor(), conversation.getPhoneNumber(), content);
+        WhatsappServiceImpl.SendResult sendResult = null;
+        if (interactive != null) {
+            sendResult = whatsappService.sendInteractiveWithResult(
+                    conversation.getDoctor(), conversation.getPhoneNumber(), interactive);
+        }
+        if (sendResult == null || !sendResult.sent()) {
+            sendResult = whatsappService.sendMessageWithResult(
+                    conversation.getDoctor(), conversation.getPhoneNumber(), content);
+        }
         LocalDateTime now = LocalDateTime.now();
         if (sendResult.sent()) {
             message.setStatus(MessageStatus.SENT);
