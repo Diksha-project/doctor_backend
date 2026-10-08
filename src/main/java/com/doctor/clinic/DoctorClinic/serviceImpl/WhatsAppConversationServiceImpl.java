@@ -124,7 +124,8 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
         }
 
         MessageType type = messageType == null ? MessageType.TEXT : MessageType.valueOf(messageType.toUpperCase());
-        WhatsAppMessage message = sendPersistedOutbound(conversation, trimmed, type, false, null);
+        WhatsAppMessage message = sendPersistedOutbound(conversation, trimmed, type, false, null,
+                conversation.getDoctor());
 
         Map<String, Object> result = new HashMap<>();
         result.put("messageId", message.getId());
@@ -147,13 +148,14 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
                 || !conversation.isAiEnabled() || conversation.isHumanTakeover()) {
             return false;
         }
-        WhatsAppMessage message = sendPersistedOutbound(conversation, content, MessageType.TEXT, true, interactive);
+        WhatsAppMessage message = sendPersistedOutbound(
+                conversation, content, MessageType.TEXT, true, interactive, doctor);
         return message.getStatus() == MessageStatus.SENT;
     }
 
     private WhatsAppMessage sendPersistedOutbound(WhatsAppConversation conversation, String content,
                                                    MessageType type, boolean aiGenerated,
-                                                   Map<String, Object> interactive) {
+                                                   Map<String, Object> interactive, Doctor deliveryDoctor) {
         WhatsAppMessage message = new WhatsAppMessage();
         message.setConversation(conversation);
         message.setOrganization(conversation.getOrganization());
@@ -172,11 +174,11 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
         WhatsappServiceImpl.SendResult sendResult = null;
         if (interactive != null) {
             sendResult = whatsappService.sendInteractiveWithResult(
-                    conversation.getDoctor(), conversation.getPhoneNumber(), interactive);
+                    deliveryDoctor, conversation.getPhoneNumber(), interactive);
         }
         if (sendResult == null || !sendResult.sent()) {
             sendResult = whatsappService.sendMessageWithResult(
-                    conversation.getDoctor(), conversation.getPhoneNumber(), content);
+                    deliveryDoctor, conversation.getPhoneNumber(), content);
         }
         LocalDateTime now = LocalDateTime.now();
         if (sendResult.sent()) {
@@ -184,7 +186,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
             message.setSentAt(now);
             message.setMetaMessageId(sendResult.providerMessageId());
             patientChatHistoryService.recordOutbound(
-                    conversation.getPatient(), conversation.getDoctor(), null, content);
+                    conversation.getPatient(), deliveryDoctor, null, content);
         } else {
             message.setStatus(MessageStatus.FAILED);
             message.setFailedAt(now);
