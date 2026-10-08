@@ -1,10 +1,7 @@
 -- Phase 1: Smart Appointment Availability
 -- Doctor-configurable weekly schedule, date-specific exceptions, and the
 -- settings used by the idempotent slot generator.
--- NOTE: Flyway is currently disabled (spring.flyway.enabled=false) in both
--- local and prod profiles, so this file documents the intended schema for
--- when migrations are re-enabled / applied manually. Locally, Hibernate
--- (ddl-auto) is used to create these tables for the dev database.
+-- Idempotent DDL supports applying this migration after baselining a legacy schema.
 
 CREATE TABLE IF NOT EXISTS doctor_availability (
     id BIGSERIAL PRIMARY KEY,
