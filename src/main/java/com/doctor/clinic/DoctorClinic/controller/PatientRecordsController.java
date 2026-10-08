@@ -94,6 +94,7 @@ public class PatientRecordsController {
 
     @GetMapping("/{patientId}/messages")
     public Page<ChatRecord> patientMessages(@PathVariable Long patientId,
+                                            @RequestParam(required = false) Long afterMessageId,
                                             @RequestParam(defaultValue = "0") int page,
                                             @RequestParam(defaultValue = "50") int size) {
         Long organizationId = organizationId();
@@ -101,7 +102,10 @@ public class PatientRecordsController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found"));
 
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(100, Math.max(1, size)));
-        return chatMessageRepo.findPagedTimelineByPatientId(patientId, pageable)
+        Page<PatientChatMessageRepo.TimelineRow> rows = afterMessageId == null
+                ? chatMessageRepo.findPagedTimelineByPatientId(patientId, pageable)
+                : chatMessageRepo.findMessagesAfter(patientId, Math.max(0L, afterMessageId), pageable);
+        return rows
                 .map(row -> new ChatRecord(row.getId(), row.getDirection(), row.getMessageType(),
                         row.getMessageText(), row.getAttachmentMimeType(), row.getAttachmentName(),
                         row.getHasAttachment(), row.getCreatedAt(), row.getHasAttachment()

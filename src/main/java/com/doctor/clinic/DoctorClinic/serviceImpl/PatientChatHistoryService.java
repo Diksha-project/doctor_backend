@@ -7,19 +7,23 @@ import java.util.stream.Collectors;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.ApplicationEventPublisher;
 
 import com.doctor.clinic.DoctorClinic.entity.Doctor;
 import com.doctor.clinic.DoctorClinic.entity.Patient;
 import com.doctor.clinic.DoctorClinic.entity.PatientChatMessage;
 import com.doctor.clinic.DoctorClinic.repo.PatientChatMessageRepo;
+import com.doctor.clinic.DoctorClinic.response.PatientChatRealtimeMessage;
 
 @Service
 public class PatientChatHistoryService {
 
     private final PatientChatMessageRepo messageRepo;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public PatientChatHistoryService(PatientChatMessageRepo messageRepo) {
+    public PatientChatHistoryService(PatientChatMessageRepo messageRepo, ApplicationEventPublisher eventPublisher) {
         this.messageRepo = messageRepo;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -46,7 +50,7 @@ public class PatientChatHistoryService {
         message.setAttachmentMimeType(mimeType);
         message.setAttachmentName(fileName);
         message.setAttachmentData(attachment);
-        messageRepo.save(message);
+        publish(messageRepo.save(message));
     }
 
     @Transactional
@@ -58,6 +62,16 @@ public class PatientChatHistoryService {
         message.setReplyToMessageId(replyToMessageId);
         message.setMessageType("text");
         message.setMessageText(text);
-        messageRepo.save(message);
+        publish(messageRepo.save(message));
+    }
+
+    private void publish(PatientChatMessage message) {
+        Patient patient = message.getPatient();
+        Doctor doctor = message.getDoctor();
+        eventPublisher.publishEvent(new ChatMessageCommittedEvent(new PatientChatRealtimeMessage(
+                message.getId(), patient.getId(), doctor.getId(), patient.getOrganization().getId(),
+                message.getDirection(), message.getMessageType(), message.getMessageText(),
+                message.getAttachmentMimeType(), message.getAttachmentName(),
+                message.getAttachmentData() != null, message.getCreatedAt())));
     }
 }

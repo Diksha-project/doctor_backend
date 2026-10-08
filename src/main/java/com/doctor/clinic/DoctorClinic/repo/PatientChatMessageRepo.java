@@ -50,6 +50,17 @@ public interface PatientChatMessageRepo extends JpaRepository<PatientChatMessage
             nativeQuery = true)
     Page<TimelineRow> findPagedTimelineByPatientId(@Param("patientId") Long patientId, Pageable pageable);
 
+    @Query(value = "select m.id as id, m.direction as \"direction\", m.message_text as \"messageText\", "
+            + "m.message_type as \"messageType\", m.attachment_mime_type as \"attachmentMimeType\", "
+            + "m.attachment_name as \"attachmentName\", m.created_at as \"createdAt\", "
+            + "case when m.attachment_data is null then false else true end as \"hasAttachment\" "
+            + "from patient_chat_messages m where m.patient_id = :patientId and m.id > :afterMessageId "
+            + "order by m.id asc",
+            countQuery = "select count(*) from patient_chat_messages m where m.patient_id = :patientId and m.id > :afterMessageId",
+            nativeQuery = true)
+    Page<TimelineRow> findMessagesAfter(@Param("patientId") Long patientId,
+                                        @Param("afterMessageId") Long afterMessageId, Pageable pageable);
+
     @Query("select m.id as id, m.direction as direction, m.messageText as messageText, "
             + "m.messageType as messageType, m.attachmentMimeType as attachmentMimeType, "
             + "m.attachmentName as attachmentName, m.createdAt as createdAt, "
