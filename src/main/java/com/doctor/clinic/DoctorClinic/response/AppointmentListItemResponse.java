@@ -11,6 +11,7 @@ import lombok.Data;
 @Builder
 public class AppointmentListItemResponse {
     private Long appointmentId;
+    private Long patientId;
     private LocalDate appointmentDate;
     private LocalTime appointmentTime;
     private LocalTime endTime;

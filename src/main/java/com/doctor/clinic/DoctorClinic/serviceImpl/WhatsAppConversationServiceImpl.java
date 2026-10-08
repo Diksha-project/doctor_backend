@@ -58,6 +58,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<Map<String, Object>> getConversationsForCurrentOrganization() {
         Long organizationId = currentOrganizationId();
         List<WhatsAppConversation> conversations = conversationRepo
@@ -70,6 +71,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Map<String, Object> getConversation(Long conversationId, Long organizationId) {
         WhatsAppConversation conversation = conversationRepo.findByOrganizationIdAndId(organizationId, conversationId)
                 .orElseThrow(() -> BusinessException.notFound("WhatsApp conversation", conversationId));
@@ -77,6 +79,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<Map<String, Object>> getMessagesForConversation(Long conversationId, Long organizationId) {
         conversationRepo.findByOrganizationIdAndId(organizationId, conversationId)
                 .orElseThrow(() -> BusinessException.notFound("WhatsApp conversation", conversationId));
