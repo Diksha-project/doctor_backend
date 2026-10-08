@@ -87,6 +87,10 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                     .findByOrganizationIdAndPatientIdAndPhoneNumber(organizationId, patient.getId(), phoneNumber)
                     .orElseGet(() -> conversationService.upsertConversation(organizationId, patient, phoneNumber, doctor));
 
+            if (conversation.getStatus() == ConversationStatus.CLOSED && !conversation.isHumanTakeover()) {
+                conversation = conversationService.reopenConversation(conversation.getId(), organizationId);
+            }
+
             if (conversation.getStatus() == ConversationStatus.CLOSED
                     || !conversation.isAiEnabled() || conversation.isHumanTakeover()) {
                 log.info("Automation disabled for conversation {} with status {}", conversation.getId(), conversation.getStatus());

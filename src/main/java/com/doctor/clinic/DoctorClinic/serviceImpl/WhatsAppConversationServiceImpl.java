@@ -344,6 +344,28 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
         return toConversationResponse(conversation);
     }
 
+    @Transactional
+    public WhatsAppConversation reopenConversation(Long conversationId, Long organizationId) {
+        WhatsAppConversation conversation = conversationRepo.findByOrganizationIdAndId(organizationId, conversationId)
+                .orElseThrow(() -> BusinessException.notFound("WhatsApp conversation", conversationId));
+        if (conversation.getStatus() == ConversationStatus.CLOSED && !conversation.isHumanTakeover()) {
+            conversation.setStatus(ConversationStatus.AI_ACTIVE);
+            conversation.setAiEnabled(true);
+            conversation = conversationRepo.save(conversation);
+
+            Map<String, Object> event = new HashMap<>();
+            event.put("eventType", "CONVERSATION_STATUS_UPDATED");
+            event.put("conversationId", conversation.getId());
+            event.put("organizationId", organizationId);
+            event.put("status", conversation.getStatus().name());
+            event.put("automationMode", conversation.getAutomationMode().name());
+            event.put("aiEnabled", conversation.isAiEnabled());
+            event.put("humanTakeover", conversation.isHumanTakeover());
+            realtimeService.publishConversationEvent(organizationId, event);
+        }
+        return conversation;
+    }
+
     private Long currentOrganizationId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || authentication.getDetails() == null) {
