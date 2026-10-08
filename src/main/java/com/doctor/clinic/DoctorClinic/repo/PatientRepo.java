@@ -16,8 +16,8 @@ public interface PatientRepo extends JpaRepository<Patient, Long> {
     Optional<Patient> findByIdAndOrganizationId(Long patientId, Long organizationId);
 
     @Query("select p from Patient p where p.organization.id = :organizationId and "
-            + "(:search is null or lower(p.fullName) like lower(concat('%', :search, '%')) "
-            + "or (:digits is not null and p.normalizedPhone like concat('%', :digits, '%'))) "
+            + "(:search = '' or lower(p.fullName) like lower(concat('%', :search, '%')) "
+            + "or (:digits <> '' and p.normalizedPhone like concat('%', :digits, '%'))) "
             + "order by p.updatedAt desc")
     List<Patient> searchByOrganization(@Param("organizationId") Long organizationId,
                                        @Param("search") String search,

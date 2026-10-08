@@ -28,6 +28,7 @@ import com.doctor.clinic.DoctorClinic.model.MessageSenderType;
 import com.doctor.clinic.DoctorClinic.model.MessageStatus;
 import com.doctor.clinic.DoctorClinic.model.MessageType;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
+import com.doctor.clinic.DoctorClinic.repo.PatientRepo;
 import com.doctor.clinic.DoctorClinic.repo.WhatsAppConversationRepo;
 import com.doctor.clinic.DoctorClinic.repo.WhatsAppMessageRepo;
 import com.doctor.clinic.DoctorClinic.service.WhatsAppConversationService;
@@ -39,6 +40,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
     private final WhatsAppConversationRepo conversationRepo;
     private final WhatsAppMessageRepo messageRepo;
     private final DoctorRepo doctorRepo;
+    private final PatientRepo patientRepo;
     private final WhatsappServiceImpl whatsappService;
     private final WhatsAppRealtimeService realtimeService;
     private final PatientChatHistoryService patientChatHistoryService;
@@ -46,12 +48,14 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
     public WhatsAppConversationServiceImpl(WhatsAppConversationRepo conversationRepo,
                                           WhatsAppMessageRepo messageRepo,
                                           DoctorRepo doctorRepo,
+                                          PatientRepo patientRepo,
                                           WhatsappServiceImpl whatsappService,
                                           WhatsAppRealtimeService realtimeService,
                                           PatientChatHistoryService patientChatHistoryService) {
         this.conversationRepo = conversationRepo;
         this.messageRepo = messageRepo;
         this.doctorRepo = doctorRepo;
+        this.patientRepo = patientRepo;
         this.whatsappService = whatsappService;
         this.realtimeService = realtimeService;
         this.patientChatHistoryService = patientChatHistoryService;
@@ -235,11 +239,102 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
         realtimeService.publishConversationEvent(conversation.getOrganization().getId(), event);
     }
 
+    @Override
+    @Transactional
+    public Map<String, Object> startConversation(Long organizationId, Long patientId, Long doctorId) {
+        Patient patient = patientRepo.findByIdAndOrganizationId(patientId, organizationId)
+                .orElseThrow(() -> BusinessException.notFound("Patient", patientId));
+        Doctor doctor = doctorRepo.findByIdAndOrganizationId(doctorId, organizationId)
+                .orElseThrow(() -> BusinessException.notFound("Doctor", doctorId));
+        String phone = patient.getNormalizedPhone();
+        if (phone == null || phone.isBlank()) {
+            throw new IllegalArgumentException("Patient has no phone number");
+        }
+        if (phone.matches("\\d{10}")) {
+            phone = "91" + phone;
+        }
+        WhatsAppConversation conversation = findOrCreateConversation(organizationId, patient, phone, doctor);
+        if (conversation.getStatus() == ConversationStatus.CLOSED) {
+            conversation.setStatus(ConversationStatus.AI_ACTIVE);
+            conversation.setAiEnabled(true);
+            conversation = conversationRepo.save(conversation);
+        }
+        return toConversationResponse(conversation);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> sendAttachment(Long conversationId, Long organizationId,
+                                              org.springframework.web.multipart.MultipartFile file, String caption) {
+        WhatsAppConversation conversation = conversationRepo.findByOrganizationIdAndId(organizationId, conversationId)
+                .orElseThrow(() -> BusinessException.notFound("WhatsApp conversation", conversationId));
+        Doctor doctor = conversation.getDoctor();
+        if (doctor == null) {
+            throw new IllegalStateException("No doctor is linked to this conversation");
+        }
+        if (file == null || file.isEmpty() || file.getSize() > 14_000_000) {
+            throw new IllegalArgumentException("Attachment is empty or larger than 14 MB");
+        }
+        String mime = file.getContentType() == null ? "application/octet-stream" : file.getContentType();
+        String filename = file.getOriginalFilename() == null ? "attachment" : file.getOriginalFilename();
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (java.io.IOException e) {
+            throw new IllegalArgumentException("Unable to read attachment");
+        }
+
+        boolean image = mime.startsWith("image/");
+        WhatsAppMessage message = new WhatsAppMessage();
+        message.setConversation(conversation);
+        message.setOrganization(conversation.getOrganization());
+        message.setPatient(conversation.getPatient());
+        message.setDoctor(doctor);
+        message.setDirection(MessageDirection.OUTBOUND);
+        message.setSenderType(MessageSenderType.ADMIN);
+        message.setMessageType(image ? MessageType.IMAGE : MessageType.DOCUMENT);
+        String label = (image ? "Image: " : "Document: ") + filename;
+        message.setContent(caption == null || caption.isBlank() ? label : label + "\n" + caption.trim());
+        message.setStatus(MessageStatus.PROCESSING);
+        message.setManual(true);
+        message = messageRepo.saveAndFlush(message);
+
+        WhatsappServiceImpl.SendResult result = whatsappService.sendMediaWithResult(
+                doctor, conversation.getPhoneNumber(), bytes, mime, filename, caption);
+        LocalDateTime now = LocalDateTime.now();
+        if (result.sent()) {
+            message.setStatus(MessageStatus.SENT);
+            message.setSentAt(now);
+            message.setMetaMessageId(result.providerMessageId());
+        } else {
+            message.setStatus(MessageStatus.FAILED);
+            message.setFailedAt(now);
+            message.setErrorMessage("Meta WhatsApp API rejected the attachment");
+        }
+        message = messageRepo.saveAndFlush(message);
+        conversation.setLastMessageAt(now);
+        conversation.setUpdatedAt(now);
+        conversationRepo.save(conversation);
+        publishMessageEvent(message, "MESSAGE_STATUS_UPDATED");
+        publishConversationUpdated(conversation);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("messageId", message.getId());
+        response.put("status", message.getStatus().name());
+        response.put("sent", message.getStatus() == MessageStatus.SENT);
+        return response;
+    }
+
     private Map<String, Object> toConversationResponse(WhatsAppConversation conversation) {
         Map<String, Object> map = new HashMap<>();
         map.put("id", conversation.getId());
         map.put("patientId", conversation.getPatient() == null ? null : conversation.getPatient().getId());
         map.put("patientName", conversation.getPatient() == null ? null : conversation.getPatient().getFullName());
+        if (conversation.getPatient() != null) {
+            int year = conversation.getPatient().getCreatedAt() == null
+                    ? LocalDateTime.now().getYear() : conversation.getPatient().getCreatedAt().getYear();
+            map.put("patientCode", String.format("PT-%d-%04d", year, conversation.getPatient().getId()));
+        }
         map.put("doctorId", conversation.getDoctor() == null ? null : conversation.getDoctor().getId());
         map.put("phoneNumber", conversation.getPhoneNumber());
         map.put("status", conversation.getStatus().name());

@@ -48,6 +48,24 @@ public class WhatsAppInboxController {
         return ResponseEntity.ok(conversationService.sendMessage(conversationId, currentOrganizationId(), content, messageType));
     }
 
+    @PostMapping("/conversations")
+    public ResponseEntity<Map<String, Object>> startConversation(@RequestBody Map<String, Object> payload) {
+        Object patientId = payload.get("patientId");
+        Object doctorId = payload.get("doctorId");
+        if (!(patientId instanceof Number) || !(doctorId instanceof Number)) {
+            throw new IllegalArgumentException("patientId and doctorId are required");
+        }
+        return ResponseEntity.ok(conversationService.startConversation(
+                currentOrganizationId(), ((Number) patientId).longValue(), ((Number) doctorId).longValue()));
+    }
+
+    @PostMapping(value = "/conversations/{conversationId}/attachments", consumes = "multipart/form-data")
+    public ResponseEntity<Map<String, Object>> sendAttachment(@PathVariable Long conversationId,
+            @org.springframework.web.bind.annotation.RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+            @org.springframework.web.bind.annotation.RequestParam(value = "caption", required = false) String caption) {
+        return ResponseEntity.ok(conversationService.sendAttachment(conversationId, currentOrganizationId(), file, caption));
+    }
+
     @PostMapping("/conversations/{conversationId}/takeover")
     public ResponseEntity<Map<String, Object>> takeover(@PathVariable Long conversationId) {
         return ResponseEntity.ok(conversationService.toggleTakeover(conversationId, currentOrganizationId(), true));

@@ -256,6 +256,69 @@ public class WhatsappServiceImpl {
         }
     }
 
+    /** Uploads a file to Meta and sends it to the patient as an image or document message. */
+    public SendResult sendMediaWithResult(Doctor doctor, String toNumber, byte[] bytes, String mimeType,
+                                          String filename, String caption) {
+        String phoneNumberId = doctor.getWhatsappPhoneNumberId();
+        String accessToken = doctor.getWhatsappAccessToken();
+        if (phoneNumberId == null || phoneNumberId.isBlank() || accessToken == null || accessToken.isBlank()) {
+            return new SendResult(false, null);
+        }
+        try {
+            org.springframework.http.client.MultipartBodyBuilder builder =
+                    new org.springframework.http.client.MultipartBodyBuilder();
+            builder.part("messaging_product", "whatsapp");
+            builder.part("type", mimeType);
+            builder.part("file", new org.springframework.core.io.ByteArrayResource(bytes) {
+                @Override
+                public String getFilename() {
+                    return filename;
+                }
+            }).contentType(org.springframework.http.MediaType.parseMediaType(mimeType));
+
+            String uploadResponse = webClient.post()
+                    .uri("https://graph.facebook.com/" + graphVersion + "/" + phoneNumberId + "/media")
+                    .header("Authorization", "Bearer " + accessToken)
+                    .body(org.springframework.web.reactive.function.BodyInserters.fromMultipartData(builder.build()))
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+            String mediaId = objectMapper.readTree(uploadResponse).path("id").asText(null);
+            if (mediaId == null) {
+                return new SendResult(false, null);
+            }
+
+            boolean image = mimeType.startsWith("image/");
+            Map<String, Object> media = new HashMap<>();
+            media.put("id", mediaId);
+            if (caption != null && !caption.isBlank()) {
+                media.put("caption", caption);
+            }
+            if (!image) {
+                media.put("filename", filename);
+            }
+            Map<String, Object> body = new HashMap<>();
+            body.put("messaging_product", "whatsapp");
+            body.put("to", toNumber);
+            body.put("type", image ? "image" : "document");
+            body.put(image ? "image" : "document", media);
+
+            String response = webClient.post()
+                    .uri("https://graph.facebook.com/" + graphVersion + "/" + phoneNumberId + "/messages")
+                    .header("Authorization", "Bearer " + accessToken)
+                    .header("Content-Type", "application/json")
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+            String providerId = objectMapper.readTree(response).path("messages").path(0).path("id").asText(null);
+            return new SendResult(true, providerId);
+        } catch (Exception e) {
+            System.err.println("Error sending WhatsApp media: " + e.getMessage());
+            return new SendResult(false, null);
+        }
+    }
+
     public boolean sendInteractiveMessage(Doctor doctor, String toNumber, Map<String, Object> interactive) {
         return sendInteractiveWithResult(doctor, toNumber, interactive).sent();
     }

@@ -66,9 +66,9 @@ public class PatientRecordsController {
 
     @GetMapping
     public List<PatientProfile> listPatients(@RequestParam(required = false) String search) {
-        String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
-        String digits = normalizedSearch == null ? null : PatientProfileService.normalizePhone(normalizedSearch);
-        if (digits != null && digits.isBlank()) digits = null;
+        String normalizedSearch = search == null || search.isBlank() ? "" : search.trim();
+        String digits = normalizedSearch.isEmpty() ? "" : PatientProfileService.normalizePhone(normalizedSearch);
+        if (digits == null) digits = "";
         return patientRepo.searchByOrganization(organizationId(), normalizedSearch, digits)
                 .stream().map(this::toProfile).toList();
     }
