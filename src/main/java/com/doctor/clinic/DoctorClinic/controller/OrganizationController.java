@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import com.doctor.clinic.DoctorClinic.request.OrganizationRegistrationRequest;
 import com.doctor.clinic.DoctorClinic.response.OrganizationDashboardResponse;
+import com.doctor.clinic.DoctorClinic.security.AuthorizationService;
+import com.doctor.clinic.DoctorClinic.security.PermissionCode;
 import com.doctor.clinic.DoctorClinic.service.OrganizationService;
 
 import jakarta.validation.Valid;
@@ -19,8 +21,11 @@ import jakarta.validation.Valid;
 public class OrganizationController {
 	
 	private OrganizationService  organizationService;
-	 public OrganizationController(OrganizationService organizationService) {
+	private final AuthorizationService authorizationService;
+
+	 public OrganizationController(OrganizationService organizationService, AuthorizationService authorizationService) {
 	        this.organizationService = organizationService;
+	        this.authorizationService = authorizationService;
 	    }
 	
 	@PostMapping("/register")
@@ -34,6 +39,7 @@ public class OrganizationController {
 	 @GetMapping("/{organizationId}/dashboard")
 	    public ResponseEntity<OrganizationDashboardResponse> getDashboard(
 	            @PathVariable Long organizationId) {
+	        authorizationService.requireOrganizationPermission(PermissionCode.DASHBOARD_VIEW, organizationId);
 	        return ResponseEntity.ok(organizationService.getOrganizationDashboard(organizationId));
 	    }
 	

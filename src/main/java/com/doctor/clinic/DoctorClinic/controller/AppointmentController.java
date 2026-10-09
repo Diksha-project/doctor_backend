@@ -26,6 +26,8 @@ import com.doctor.clinic.DoctorClinic.response.DoctorPatientDashboardResponse;
 import com.doctor.clinic.DoctorClinic.entity.Appointment;
 import com.doctor.clinic.DoctorClinic.repo.AppointmentRepo;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
+import com.doctor.clinic.DoctorClinic.security.AuthorizationService;
+import com.doctor.clinic.DoctorClinic.security.PermissionCode;
 import com.doctor.clinic.DoctorClinic.service.AppointmentService;
 import com.doctor.clinic.DoctorClinic.serviceImpl.DoctorPatientDashboardService;
 
@@ -40,6 +42,7 @@ public class AppointmentController {
 	private final DoctorPatientDashboardService doctorPatientDashboardService;
 	private final DoctorRepo doctorRepo;
 	private final AppointmentRepo appointmentRepo;
+	private final AuthorizationService authorizationService;
 
 	@PostMapping("/book")
 	public ResponseEntity<ApiResponse<BookAppointmentResponse>> bookAppointment(
@@ -49,6 +52,7 @@ public class AppointmentController {
 				request.getAppointmentTime());
 
 		try {
+			authorizationService.requireDoctorPermission(PermissionCode.APPOINTMENTS_CREATE, organizationId(), request.getDoctorId());
 			requireDoctorInOrganization(request.getDoctorId(), organizationId());
 			BookAppointmentResponse response = appointmentService.bookAppointment(request);
 			return ResponseEntity.ok(ApiResponse.success("Appointment booked successfully", response));
@@ -63,7 +67,9 @@ public class AppointmentController {
 			@RequestParam String paymentId) {
 
 		try {
-			requireAppointmentInOrganization(appointmentId, organizationId());
+			Appointment appointment = requireAppointmentInOrganization(appointmentId, organizationId());
+			authorizationService.requireDoctorPermission(PermissionCode.APPOINTMENTS_EDIT, organizationId(),
+					appointment.getDoctor() == null ? null : appointment.getDoctor().getId());
 			BookAppointmentResponse response = appointmentService.confirmPayment(appointmentId, paymentId);
 			return ResponseEntity.ok(ApiResponse.success("Payment confirmed", response));
 		} catch (Exception e) {
@@ -76,13 +82,16 @@ public class AppointmentController {
 	    
 	 @PatchMapping("/status")
 	    public ResponseEntity<Map<String, Object>> updateStatus(@RequestBody UpdateStatusRequest request) {
-	        requireAppointmentInOrganization(request.getAppointmentId(), organizationId());
+	        Appointment appointment = requireAppointmentInOrganization(request.getAppointmentId(), organizationId());
+	        authorizationService.requireDoctorPermission(PermissionCode.APPOINTMENTS_EDIT, organizationId(),
+	        		appointment.getDoctor() == null ? null : appointment.getDoctor().getId());
 	        return ResponseEntity.ok(appointmentService.updateAppointmentStatus(request));
 	    }
 	
 	 
 	 @GetMapping("/{doctorId}/dashboard")
 	    public ResponseEntity<AppointmentDashboardResponse> getDashboard(@PathVariable Long doctorId) {
+	        authorizationService.requireDoctorPermission(PermissionCode.APPOINTMENTS_VIEW, organizationId(), doctorId);
 	        requireDoctorInOrganization(doctorId, organizationId());
 	        return ResponseEntity.ok(appointmentService.getAppointmentDashboard(doctorId));
 	    }
@@ -92,6 +101,7 @@ public class AppointmentController {
 			@PathVariable Long doctorId,
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
 		LocalDate dashboardDate = date == null ? LocalDate.now() : date;
+		authorizationService.requireDoctorPermission(PermissionCode.PATIENTS_VIEW, organizationId(), doctorId);
 		return ResponseEntity.ok(doctorPatientDashboardService.getPatientsForDate(
 				doctorId, organizationId(), dashboardDate));
 	}
@@ -102,6 +112,7 @@ public class AppointmentController {
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
 			@RequestParam(required = false) String search,
 			@RequestParam(required = false) String status) {
+		authorizationService.requireDoctorPermission(PermissionCode.APPOINTMENTS_VIEW, organizationId(), doctorId);
 		requireDoctorInOrganization(doctorId, organizationId());
 		return ResponseEntity.ok(ApiResponse.success(appointmentService.listForDoctor(doctorId, from, to, search, status)));
 	}

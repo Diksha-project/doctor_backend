@@ -7,15 +7,22 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import com.doctor.clinic.DoctorClinic.entity.AppUser;
 import com.doctor.clinic.DoctorClinic.entity.Doctor;
 import com.doctor.clinic.DoctorClinic.entity.Organization;
+import com.doctor.clinic.DoctorClinic.entity.Role;
+import com.doctor.clinic.DoctorClinic.entity.UserRole;
+import com.doctor.clinic.DoctorClinic.model.ResourceScope;
 import com.doctor.clinic.DoctorClinic.model.SubscriptionStatus;
 import com.doctor.clinic.DoctorClinic.repo.AppointmentRepo;
+import com.doctor.clinic.DoctorClinic.repo.AppUserRepo;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
 import com.doctor.clinic.DoctorClinic.repo.DoctorSlotRepo;
 import com.doctor.clinic.DoctorClinic.repo.OrganizationRepo;
+import com.doctor.clinic.DoctorClinic.repo.RoleRepo;
 import com.doctor.clinic.DoctorClinic.request.OrganizationRegistrationRequest;
 import com.doctor.clinic.DoctorClinic.response.DoctorListInfo;
 import com.doctor.clinic.DoctorClinic.response.OrganizationDashboardResponse;
@@ -39,6 +46,15 @@ public class OrganizationServiceImpl implements OrganizationService {
 	@Autowired
 	private DoctorSlotRepo doctorSlotRepo;
 
+	@Autowired
+	private AppUserRepo appUserRepo;
+
+	@Autowired
+	private RoleRepo roleRepo;
+
+	@Autowired
+	private PasswordEncoder passwordEncoder;
+
 	@Override
 	public String registerOrganization(OrganizationRegistrationRequest req) {
 		// Create and populate organization
@@ -48,12 +64,30 @@ public class OrganizationServiceImpl implements OrganizationService {
 				.maxDoctors(req.getOrganizationType().getDefaultMaxDoctors()).doctorsCount(0)
 				.subscriptionStatus(SubscriptionStatus.TRIAL)
 				.trialEndsAt(LocalDateTime.now().toLocalDate().plusMonths(3)).lastLoginAt(LocalDateTime.now())
-				.passwordHash(req.getPassword()).isActive(true) // You might want to set this based on email
+				.passwordHash(passwordEncoder.encode(req.getPassword())).isActive(true) // You might want to set this based on email
 																// verification
 				.emailVerified(false).mobileVerified(false).build();
 
 		// Save the organization
 		Organization savedOrg = organizationRepo.save(org);
+
+		Role superAdminRole = roleRepo.findWithPermissionsByCodeAndOrganizationIsNull("SUPER_ADMIN")
+				.orElseThrow(() -> new IllegalStateException("SUPER_ADMIN role is missing"));
+
+		AppUser user = new AppUser();
+		user.setOrganization(savedOrg);
+		user.setFullName(savedOrg.getOwnerFullName());
+		user.setEmail(savedOrg.getOwnerEmail());
+		user.setPasswordHash(savedOrg.getPasswordHash());
+		user.setActive(true);
+		user.setLastLoginAt(LocalDateTime.now());
+
+		UserRole userRole = new UserRole();
+		userRole.setUser(user);
+		userRole.setRole(superAdminRole);
+		userRole.setScope(ResourceScope.ORGANIZATION);
+		user.getUserRoles().add(userRole);
+		appUserRepo.save(user);
 
 		return "Organization registered successfully with ID: " + savedOrg.getId();
 	}

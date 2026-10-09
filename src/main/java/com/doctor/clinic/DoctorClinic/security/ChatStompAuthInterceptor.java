@@ -20,10 +20,12 @@ import com.doctor.clinic.DoctorClinic.repo.PatientRepo;
 public class ChatStompAuthInterceptor implements ChannelInterceptor {
     private final JwtUtil jwtUtil;
     private final PatientRepo patientRepo;
+    private final CurrentUserService currentUserService;
 
-    public ChatStompAuthInterceptor(JwtUtil jwtUtil, PatientRepo patientRepo) {
+    public ChatStompAuthInterceptor(JwtUtil jwtUtil, PatientRepo patientRepo, CurrentUserService currentUserService) {
         this.jwtUtil = jwtUtil;
         this.patientRepo = patientRepo;
+        this.currentUserService = currentUserService;
     }
 
     @Override
@@ -49,12 +51,11 @@ public class ChatStompAuthInterceptor implements ChannelInterceptor {
         }
         String token = header.substring(7).trim();
         if (!jwtUtil.isTokenValid(token)) throw new AccessDeniedException("Invalid or expired token");
-        String role = jwtUtil.extractRole(token);
-        Long organizationId = jwtUtil.extractOrganizationId(token);
-        if (organizationId == null || role == null) throw new AccessDeniedException("Token has no organization or role");
+        CurrentUser currentUser = currentUserService.loadByEmail(jwtUtil.extractEmail(token));
+        Long organizationId = currentUser.organizationId();
 
-        var authentication = new UsernamePasswordAuthenticationToken(jwtUtil.extractEmail(token), null,
-                Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role)));
+        var authentication = new UsernamePasswordAuthenticationToken(currentUser, null,
+                currentUser.roles().stream().map(role -> new SimpleGrantedAuthority("ROLE_" + role)).toList());
         authentication.setDetails(organizationId);
         accessor.setUser(authentication);
     }

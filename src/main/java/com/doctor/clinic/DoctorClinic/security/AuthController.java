@@ -16,11 +16,17 @@ import com.doctor.clinic.DoctorClinic.response.LoginResponse;
 public class AuthController {
     
     private final AuthService authService;
+    private final CurrentUserService currentUserService;
     
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest request) {
         log.info("Login request for email: {}", request.getEmail());
         LoginResponse response = authService.login(request);
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<CurrentUser> me() {
+        return ResponseEntity.ok(currentUserService.getRequiredCurrentUser());
     }
 }

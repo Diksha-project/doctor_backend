@@ -28,17 +28,24 @@ public class JwtUtil {
     }
     
     public String generateToken(String email, String role, Long organizationId) {
+        return generateToken(email, null, role, organizationId);
+    }
+
+    public String generateToken(String email, Long userId, String role, Long organizationId) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + expiration);
         
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .setSubject(email)
                 .claim("role", role)
                 .claim("organizationId", organizationId)
                 .setIssuedAt(now)
                 .setExpiration(expiryDate)
-                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
-                .compact();
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256);
+        if (userId != null) {
+            builder.claim("userId", userId);
+        }
+        return builder.compact();
     }
     
     public String extractEmail(String token) {
@@ -51,6 +58,10 @@ public class JwtUtil {
     
     public Long extractOrganizationId(String token) {
         return getClaims(token).get("organizationId", Long.class);
+    }
+
+    public Long extractUserId(String token) {
+        return getClaims(token).get("userId", Long.class);
     }
     
     public boolean isTokenValid(String token) {

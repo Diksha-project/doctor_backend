@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.server.ResponseStatusException;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +34,14 @@ public class GlobalExceptionHandler {
         
         ErrorResponse response = ErrorResponse.validationError("Validation failed", errors, request.getRequestURI());
         return ResponseEntity.status(400).body(response);
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ErrorResponse> handleResponseStatus(ResponseStatusException ex, HttpServletRequest request) {
+        int status = ex.getStatusCode().value();
+        String message = ex.getReason() == null ? ex.getStatusCode().toString() : ex.getReason();
+        ErrorResponse response = ErrorResponse.of(status, ex.getStatusCode().toString(), message, request.getRequestURI());
+        return ResponseEntity.status(ex.getStatusCode()).body(response);
     }
     
     @ExceptionHandler(Exception.class)

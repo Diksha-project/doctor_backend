@@ -12,13 +12,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 
 
 import java.io.IOException;
-import java.util.Collections;
+import java.util.ArrayList;
+import java.util.List;
 
 @Slf4j
 @Component
@@ -29,6 +31,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	
 	    
 	    private final JwtUtil jwtUtil;
+        private final CurrentUserService currentUserService;
 	    
 	  
         
@@ -42,6 +45,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	    	
 	        
 	        String path = request.getRequestURI();
+
+            if (HttpMethod.OPTIONS.matches(request.getMethod())) {
+                filterChain.doFilter(request, response);
+                return;
+            }
 	        
 	        if (path.equals("/api/auth/login") || path.equals("/org/register") || path.equals("/api/auth/register")
                     || path.equals("/webhook/whatsapp") || path.equals("/webhook/health")
@@ -65,28 +73,32 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	            try {
 	                if (jwtUtil.isTokenValid(token)) {
 	                    String email = jwtUtil.extractEmail(token);
-	                    String role = jwtUtil.extractRole(token);
-	                    Long organizationId = jwtUtil.extractOrganizationId(token);
+	                    CurrentUser currentUser = currentUserService.loadByEmail(email);
 	                    
-	                    log.info("Valid token for user: {}, role: {}", email, role);
+	                    log.info("Valid token for user: {}", email);
 	                    
-	                    // ========== CRITICAL: Set authentication in SecurityContext ==========
+                        List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+                        currentUser.roles().forEach(role ->
+                                authorities.add(new SimpleGrantedAuthority("ROLE_" + role)));
+                        currentUser.permissions().forEach(permission ->
+                                authorities.add(new SimpleGrantedAuthority(permission)));
+
 	                    UsernamePasswordAuthenticationToken authentication = 
 	                        new UsernamePasswordAuthenticationToken(
-	                            email, 
+	                            currentUser,
 	                            null, 
-	                            Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role))
+	                            authorities
 	                        );
 	                    
-	                    // Store additional details if needed
-	                    authentication.setDetails(organizationId);
+	                    authentication.setDetails(currentUser.organizationId());
 	                    
 	                    SecurityContextHolder.getContext().setAuthentication(authentication);
 	                    
 	                    // Also store in request attributes for convenience
 	                    request.setAttribute("email", email);
-	                    request.setAttribute("role", role);
-	                    request.setAttribute("organizationId", organizationId);
+	                    request.setAttribute("organizationId", currentUser.organizationId());
+                        request.setAttribute("userId", currentUser.userId());
+                        request.setAttribute("doctorId", currentUser.doctorId());
 	                } else {
 	                    log.warn("Invalid token");
 	                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);

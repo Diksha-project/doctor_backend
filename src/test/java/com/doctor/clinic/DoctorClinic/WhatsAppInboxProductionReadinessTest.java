@@ -25,6 +25,8 @@ import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.security.access.AccessDeniedException;
 
 import com.doctor.clinic.DoctorClinic.AIServices.WhatsappServiceImpl;
+import com.doctor.clinic.DoctorClinic.CustomException.BusinessException;
+import com.doctor.clinic.DoctorClinic.entity.AppUser;
 import com.doctor.clinic.DoctorClinic.entity.Doctor;
 import com.doctor.clinic.DoctorClinic.entity.Organization;
 import com.doctor.clinic.DoctorClinic.entity.Patient;
@@ -38,6 +40,7 @@ import com.doctor.clinic.DoctorClinic.model.MessageSenderType;
 import com.doctor.clinic.DoctorClinic.model.MessageStatus;
 import com.doctor.clinic.DoctorClinic.model.OrganizationType;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
+import com.doctor.clinic.DoctorClinic.repo.AppUserRepo;
 import com.doctor.clinic.DoctorClinic.repo.OrganizationRepo;
 import com.doctor.clinic.DoctorClinic.repo.PatientRepo;
 import com.doctor.clinic.DoctorClinic.repo.PatientChatMessageRepo;
@@ -63,6 +66,9 @@ class WhatsAppInboxProductionReadinessTest {
 
     @Autowired
     private OrganizationRepo organizationRepo;
+
+    @Autowired
+    private AppUserRepo appUserRepo;
 
     @Autowired
     private DoctorRepo doctorRepo;
@@ -291,13 +297,22 @@ class WhatsAppInboxProductionReadinessTest {
                 "91" + records.patient().getNormalizedPhone(), records.doctor());
         Organization otherOrganization = createOrganization();
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(BusinessException.class,
                 () -> conversationService.getConversation(conversation.getId(), otherOrganization.getId()));
     }
 
     @Test
     void websocketConnectAuthenticatesJwtAndSubscribeRejectsOtherOrganization() {
-        String token = jwtUtil.generateToken("inbox@example.com", "ADMIN", 41L);
+        Organization organization = createOrganization();
+        AppUser user = new AppUser();
+        user.setOrganization(organization);
+        user.setFullName("Inbox User");
+        user.setEmail("inbox-" + UUID.randomUUID() + "@example.com");
+        user.setPasswordHash("hashed-password");
+        user.setActive(true);
+        user = appUserRepo.save(user);
+
+        String token = jwtUtil.generateToken(user.getEmail(), user.getId(), "ADMIN", organization.getId());
         StompHeaderAccessor connectAccessor = StompHeaderAccessor.create(StompCommand.CONNECT);
         connectAccessor.setLeaveMutable(true);
         connectAccessor.setNativeHeader("Authorization", "Bearer " + token);
@@ -311,7 +326,7 @@ class WhatsAppInboxProductionReadinessTest {
         StompHeaderAccessor authorizedSub = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
         authorizedSub.setLeaveMutable(true);
         authorizedSub.setUser(authenticatedAccessor.getUser());
-        authorizedSub.setDestination("/topic/organizations/41/whatsapp/messages");
+        authorizedSub.setDestination("/topic/organizations/" + organization.getId() + "/whatsapp/messages");
         webSocketConfig.stompAuthInterceptor().preSend(
                 MessageBuilder.createMessage(new byte[0], authorizedSub.getMessageHeaders()), null);
 

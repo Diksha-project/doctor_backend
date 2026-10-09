@@ -21,15 +21,19 @@ import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
 import com.doctor.clinic.DoctorClinic.security.JwtUtil;
+import com.doctor.clinic.DoctorClinic.security.CurrentUser;
+import com.doctor.clinic.DoctorClinic.security.CurrentUserService;
 
 @Configuration
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final JwtUtil jwtUtil;
+    private final CurrentUserService currentUserService;
 
-    public WebSocketConfig(JwtUtil jwtUtil) {
+    public WebSocketConfig(JwtUtil jwtUtil, CurrentUserService currentUserService) {
         this.jwtUtil = jwtUtil;
+        this.currentUserService = currentUserService;
     }
 
     @Override
@@ -72,13 +76,12 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                         throw new AccessDeniedException("Invalid JWT for WebSocket connection");
                     }
 
-                    String email = jwtUtil.extractEmail(token);
-                    String role = jwtUtil.extractRole(token);
-                    Long organizationId = jwtUtil.extractOrganizationId(token);
+                    CurrentUser currentUser = currentUserService.loadByEmail(jwtUtil.extractEmail(token));
+                    Long organizationId = currentUser.organizationId();
                     UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                            email,
+                            currentUser,
                             null,
-                            List.of(new SimpleGrantedAuthority("ROLE_" + role))
+                            currentUser.roles().stream().map(role -> new SimpleGrantedAuthority("ROLE_" + role)).toList()
                     );
                     authentication.setDetails(organizationId);
                     accessor.setUser(authentication);
