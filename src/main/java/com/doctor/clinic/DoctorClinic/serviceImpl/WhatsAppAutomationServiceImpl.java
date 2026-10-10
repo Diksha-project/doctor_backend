@@ -42,6 +42,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
     private final AppointmentBookingChatService appointmentBookingChatService;
     private final WhatsAppConversationServiceImpl conversationService;
     private final BookingRequestService bookingRequestService;
+    private final ClinicMessageScopeDetector clinicMessageScopeDetector;
 
     public WhatsAppAutomationServiceImpl(DoctorRepo doctorRepo,
                                         PatientRepo patientRepo,
@@ -52,7 +53,8 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                                         IntentDetector intentDetector,
                                         AppointmentBookingChatService appointmentBookingChatService,
                                         WhatsAppConversationServiceImpl conversationService,
-                                        BookingRequestService bookingRequestService) {
+                                        BookingRequestService bookingRequestService,
+                                        ClinicMessageScopeDetector clinicMessageScopeDetector) {
         this.doctorRepo = doctorRepo;
         this.patientRepo = patientRepo;
         this.conversationRepo = conversationRepo;
@@ -63,6 +65,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
         this.appointmentBookingChatService = appointmentBookingChatService;
         this.conversationService = conversationService;
         this.bookingRequestService = bookingRequestService;
+        this.clinicMessageScopeDetector = clinicMessageScopeDetector;
     }
 
     @Override
@@ -137,6 +140,20 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
             }
         }
 
+        Optional<AppointmentBookingChatService.Reply> bookingReply = appointmentBookingChatService.handle(doctor, patient, normalized, selectionId);
+        if (bookingReply.isPresent()) {
+            if (bookingReply.get().interactive() != null) {
+                interactiveOut.putAll(bookingReply.get().interactive());
+            }
+            return bookingReply.get().text();
+        }
+
+        if (!clinicMessageScopeDetector.isInScope(normalized)) {
+            return "I can help with health questions and Dr. " + doctor.getFullName()
+                    + "’s clinic services, such as appointments, fees, clinic hours, and patient records. "
+                    + "I can’t help with unrelated requests. What clinic-related question can I help with?";
+        }
+
         WhatsAppResponseRule rule = findMatchingRule(doctor, conversation.getOrganization(), normalized);
         if (rule != null && rule.getResponseMode() == ResponseMode.TEXT) {
             log.info("Matched response rule {} for conversation {}", rule.getName(), conversation.getId());
@@ -145,14 +162,6 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
 
         if (rule != null && rule.getResponseMode() == ResponseMode.ESCALATE) {
             return "Thanks for reaching out. Our team has been notified and will get back to you shortly.";
-        }
-
-        Optional<AppointmentBookingChatService.Reply> bookingReply = appointmentBookingChatService.handle(doctor, patient, normalized, selectionId);
-        if (bookingReply.isPresent()) {
-            if (bookingReply.get().interactive() != null) {
-                interactiveOut.putAll(bookingReply.get().interactive());
-            }
-            return bookingReply.get().text();
         }
 
         String keywordResponse = resolveKeywordResponse(doctor, normalized);
