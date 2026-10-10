@@ -96,6 +96,14 @@ public class DoctorAvailabilityServiceImpl implements DoctorAvailabilityService 
             UpdateAvailabilitySettingsRequest request) {
         Doctor doctor = requireDoctor(doctorId, organizationId);
 
+        int maximumCapacity = maximumConfiguredDailyCapacity(doctorId, request.getAppointmentDurationMinutes());
+        if (maximumCapacity > 0 && request.getMaxAppointmentsPerDay() > maximumCapacity) {
+            throw new BusinessException(400, "MAX_APPOINTMENTS_EXCEEDS_HOURS",
+                    "Maximum appointments cannot exceed " + maximumCapacity
+                            + " for the configured working hours at "
+                            + request.getAppointmentDurationMinutes() + " minutes per appointment");
+        }
+
         DoctorAvailabilitySettings settings = settingsRepo.findByDoctorId(doctorId)
                 .orElseGet(() -> DoctorAvailabilitySettings.builder().doctor(doctor).build());
         settings.setDoctor(doctor);
@@ -283,6 +291,19 @@ public class DoctorAvailabilityServiceImpl implements DoctorAvailabilityService 
     private Doctor requireDoctor(Long doctorId, Long organizationId) {
         return doctorRepo.findByIdAndOrganizationId(doctorId, organizationId)
                 .orElseThrow(() -> BusinessException.notFound("Doctor", doctorId));
+    }
+
+    private int maximumConfiguredDailyCapacity(Long doctorId, int durationMinutes) {
+        Map<DayOfWeek, Integer> minutesByDay = availabilityRepo
+                .findByDoctorIdAndActiveTrueOrderByDayOfWeekAscStartTimeAsc(doctorId).stream()
+                .collect(Collectors.groupingBy(DoctorAvailability::getDayOfWeek,
+                        Collectors.summingInt(period -> (int) java.time.Duration
+                                .between(period.getStartTime(), period.getEndTime()).toMinutes())));
+        return minutesByDay.values().stream()
+                .filter(minutes -> minutes > 0)
+                .mapToInt(minutes -> minutes / durationMinutes)
+                .min()
+                .orElse(0);
     }
 
     private DoctorAvailabilityResponse buildResponse(Doctor doctor) {
