@@ -49,7 +49,7 @@ public class DoctorController {
 	        @PathVariable Long doctorId) {
 
 	    DoctorResponse response = doctorService.getDoctorDetailsByID(doctorId);
-	    authorizationService.requireDoctorPermission(PermissionCode.DOCTORS_VIEW, response.getOrganizationId(), doctorId);
+    authorizationService.requireDoctorProfileAccess(response.getOrganizationId(), doctorId);
 
 	    return ResponseEntity.ok(response);
 	}

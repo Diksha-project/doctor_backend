@@ -58,6 +58,17 @@ public class AuthorizationService {
         return requireDoctorPermission(permission.code(), organizationId, doctorId);
     }
 
+    public CurrentUser requireDoctorProfileAccess(Long organizationId, Long doctorId) {
+        CurrentUser user = currentUserService.getRequiredCurrentUser();
+        if (organizationId == null || !organizationId.equals(user.organizationId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Resource not found");
+        }
+        if (user.doctorId() != null && user.doctorId().equals(doctorId)) {
+            return user;
+        }
+        return requireOrganizationDoctorPermission(PermissionCode.DOCTORS_VIEW, organizationId, doctorId);
+    }
+
     public CurrentUser requireOrganizationDoctorPermission(String permission, Long organizationId, Long doctorId) {
         CurrentUser user = requireOrganizationPermission(permission, organizationId);
         if (user.roles().contains("SUPER_ADMIN") || user.hasScope(ResourceScope.ORGANIZATION)) {
