@@ -114,7 +114,7 @@ public class AppointmentController {
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
 			@RequestParam(required = false) String search,
 			@RequestParam(required = false) String status) {
-		authorizationService.requireDoctorPermission(PermissionCode.APPOINTMENTS_VIEW, organizationId(), doctorId);
+		authorizationService.requireOrganizationDoctorPermission(PermissionCode.APPOINTMENTS_VIEW, organizationId(), doctorId);
 		requireDoctorInOrganization(doctorId, organizationId());
 		return ResponseEntity.ok(ApiResponse.success(appointmentService.listForDoctor(doctorId, from, to, search, status)));
 	}

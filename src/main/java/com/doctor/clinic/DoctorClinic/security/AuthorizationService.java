@@ -57,4 +57,22 @@ public class AuthorizationService {
     public CurrentUser requireDoctorPermission(PermissionCode permission, Long organizationId, Long doctorId) {
         return requireDoctorPermission(permission.code(), organizationId, doctorId);
     }
+
+    public CurrentUser requireOrganizationDoctorPermission(String permission, Long organizationId, Long doctorId) {
+        CurrentUser user = requireOrganizationPermission(permission, organizationId);
+        if (user.roles().contains("SUPER_ADMIN") || user.hasScope(ResourceScope.ORGANIZATION)) {
+            return user;
+        }
+        if (user.hasScope(ResourceScope.OWN_DOCTOR)
+                && user.doctorId() != null
+                && user.doctorId().equals(doctorId)) {
+            return user;
+        }
+        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Resource not found");
+    }
+
+    public CurrentUser requireOrganizationDoctorPermission(PermissionCode permission, Long organizationId,
+            Long doctorId) {
+        return requireOrganizationDoctorPermission(permission.code(), organizationId, doctorId);
+    }
 }
