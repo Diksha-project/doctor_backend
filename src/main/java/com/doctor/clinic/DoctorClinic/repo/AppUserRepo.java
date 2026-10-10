@@ -43,7 +43,7 @@ public interface AppUserRepo extends JpaRepository<AppUser, Long> {
             join app_roles r on r.id = ur.role_id
             join app_role_permissions rp on rp.role_id = r.id
             join app_permissions p on p.id = rp.permission_id
-            where ur.user_id = :userId and r.active = true
+            where ur.user_id = :userId and r.active = true and position(':' in p.code) > 0
             """, nativeQuery = true)
     Set<String> findPermissionCodesByUserId(@Param("userId") Long userId);
 

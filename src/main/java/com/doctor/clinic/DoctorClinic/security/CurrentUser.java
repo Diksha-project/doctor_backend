@@ -25,6 +25,10 @@ public record CurrentUser(
         return permissions.contains(permission);
     }
 
+    public boolean hasPermission(PermissionCode permission) {
+        return permissions.contains(permission.code());
+    }
+
     public boolean hasScope(ResourceScope scope) {
         return scopes.contains(scope);
     }

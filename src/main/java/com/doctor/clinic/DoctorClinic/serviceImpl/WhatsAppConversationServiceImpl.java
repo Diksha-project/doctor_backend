@@ -8,10 +8,12 @@ import java.util.Map;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.doctor.clinic.DoctorClinic.AIServices.WhatsappServiceImpl;
 import com.doctor.clinic.DoctorClinic.CustomException.BusinessException;
@@ -27,10 +29,13 @@ import com.doctor.clinic.DoctorClinic.model.MessageDirection;
 import com.doctor.clinic.DoctorClinic.model.MessageSenderType;
 import com.doctor.clinic.DoctorClinic.model.MessageStatus;
 import com.doctor.clinic.DoctorClinic.model.MessageType;
+import com.doctor.clinic.DoctorClinic.model.ResourceScope;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
 import com.doctor.clinic.DoctorClinic.repo.PatientRepo;
 import com.doctor.clinic.DoctorClinic.repo.WhatsAppConversationRepo;
 import com.doctor.clinic.DoctorClinic.repo.WhatsAppMessageRepo;
+import com.doctor.clinic.DoctorClinic.security.CurrentUser;
+import com.doctor.clinic.DoctorClinic.security.CurrentUserService;
 import com.doctor.clinic.DoctorClinic.service.WhatsAppConversationService;
 import com.doctor.clinic.DoctorClinic.service.WhatsAppRealtimeService;
 
@@ -44,6 +49,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
     private final WhatsappServiceImpl whatsappService;
     private final WhatsAppRealtimeService realtimeService;
     private final PatientChatHistoryService patientChatHistoryService;
+    private final CurrentUserService currentUserService;
 
     public WhatsAppConversationServiceImpl(WhatsAppConversationRepo conversationRepo,
                                           WhatsAppMessageRepo messageRepo,
@@ -51,7 +57,8 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
                                           PatientRepo patientRepo,
                                           WhatsappServiceImpl whatsappService,
                                           WhatsAppRealtimeService realtimeService,
-                                          PatientChatHistoryService patientChatHistoryService) {
+                                          PatientChatHistoryService patientChatHistoryService,
+                                          CurrentUserService currentUserService) {
         this.conversationRepo = conversationRepo;
         this.messageRepo = messageRepo;
         this.doctorRepo = doctorRepo;
@@ -59,14 +66,23 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
         this.whatsappService = whatsappService;
         this.realtimeService = realtimeService;
         this.patientChatHistoryService = patientChatHistoryService;
+        this.currentUserService = currentUserService;
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getConversationsForCurrentOrganization() {
         Long organizationId = currentOrganizationId();
+        CurrentUser user = currentUserService.getRequiredCurrentUser();
         List<WhatsAppConversation> conversations = conversationRepo
                 .findByOrganizationIdOrderByLastMessageAtDescCreatedAtDesc(organizationId, PageRequest.of(0, 200));
+        if (isOwnDoctorOnly(user)) {
+            conversations = conversations.stream()
+                    .filter(conversation -> conversation.getDoctor() != null
+                            && user.doctorId() != null
+                            && user.doctorId().equals(conversation.getDoctor().getId()))
+                    .toList();
+        }
         List<Map<String, Object>> result = new ArrayList<>();
         for (WhatsAppConversation conversation : conversations) {
             result.add(toConversationResponse(conversation));
@@ -79,14 +95,16 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
     public Map<String, Object> getConversation(Long conversationId, Long organizationId) {
         WhatsAppConversation conversation = conversationRepo.findByOrganizationIdAndId(organizationId, conversationId)
                 .orElseThrow(() -> BusinessException.notFound("WhatsApp conversation", conversationId));
+        requireConversationAccess(conversation, currentUserService.getRequiredCurrentUser());
         return toConversationResponse(conversation);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getMessagesForConversation(Long conversationId, Long organizationId) {
-        conversationRepo.findByOrganizationIdAndId(organizationId, conversationId)
+        WhatsAppConversation conversation = conversationRepo.findByOrganizationIdAndId(organizationId, conversationId)
                 .orElseThrow(() -> BusinessException.notFound("WhatsApp conversation", conversationId));
+        requireConversationAccess(conversation, currentUserService.getRequiredCurrentUser());
         List<WhatsAppMessage> messages = messageRepo.findByOrganizationIdAndConversationIdOrderByCreatedAtAsc(organizationId, conversationId);
         List<Map<String, Object>> result = new ArrayList<>();
         for (WhatsAppMessage message : messages) {
@@ -115,15 +133,13 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
     public Map<String, Object> sendMessage(Long conversationId, Long organizationId, String content, String messageType) {
         WhatsAppConversation conversation = conversationRepo.findByOrganizationIdAndId(organizationId, conversationId)
                 .orElseThrow(() -> BusinessException.notFound("WhatsApp conversation", conversationId));
+        CurrentUser user = currentUserService.getRequiredCurrentUser();
 
         if (conversation.getDoctor() == null) {
-            List<Doctor> doctors = doctorRepo.findByOrganizationId(organizationId);
-            if (doctors.isEmpty()) {
-                throw new IllegalStateException("No doctor is available for this organization");
-            }
-            conversation.setDoctor(doctors.get(0));
+            conversation.setDoctor(defaultConversationDoctor(organizationId, user));
             conversationRepo.save(conversation);
         }
+        requireConversationAccess(conversation, user);
 
         String trimmed = content == null ? "" : content.trim();
         if (trimmed.isEmpty()) {
@@ -268,6 +284,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
                                               org.springframework.web.multipart.MultipartFile file, String caption) {
         WhatsAppConversation conversation = conversationRepo.findByOrganizationIdAndId(organizationId, conversationId)
                 .orElseThrow(() -> BusinessException.notFound("WhatsApp conversation", conversationId));
+        requireConversationAccess(conversation, currentUserService.getRequiredCurrentUser());
         Doctor doctor = conversation.getDoctor();
         if (doctor == null) {
             throw new IllegalStateException("No doctor is linked to this conversation");
@@ -369,6 +386,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
     public Map<String, Object> toggleTakeover(Long conversationId, Long organizationId, boolean takeoverEnabled) {
         WhatsAppConversation conversation = conversationRepo.findByOrganizationIdAndId(organizationId, conversationId)
                 .orElseThrow(() -> BusinessException.notFound("WhatsApp conversation", conversationId));
+        requireConversationAccess(conversation, currentUserService.getRequiredCurrentUser());
         conversation.setHumanTakeover(takeoverEnabled);
         conversation.setAiEnabled(!takeoverEnabled);
         conversation.setAutomationMode(takeoverEnabled ? AutomationMode.MANUAL : AutomationMode.HYBRID);
@@ -398,6 +416,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
     public Map<String, Object> markConversationRead(Long conversationId, Long organizationId) {
         WhatsAppConversation conversation = conversationRepo.findByOrganizationIdAndId(organizationId, conversationId)
                 .orElseThrow(() -> BusinessException.notFound("WhatsApp conversation", conversationId));
+        requireConversationAccess(conversation, currentUserService.getRequiredCurrentUser());
         int markedRead = messageRepo.markInboundMessagesRead(
                 organizationId, conversationId, MessageDirection.INBOUND,
                 MessageStatus.RECEIVED, MessageStatus.READ, LocalDateTime.now());
@@ -419,6 +438,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
     public Map<String, Object> closeConversation(Long conversationId, Long organizationId) {
         WhatsAppConversation conversation = conversationRepo.findByOrganizationIdAndId(organizationId, conversationId)
                 .orElseThrow(() -> BusinessException.notFound("WhatsApp conversation", conversationId));
+        requireConversationAccess(conversation, currentUserService.getRequiredCurrentUser());
         boolean changed = conversation.getStatus() != ConversationStatus.CLOSED || conversation.isAiEnabled();
         if (changed) {
             conversation.setStatus(ConversationStatus.CLOSED);
@@ -471,6 +491,32 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
             return number.longValue();
         }
         throw new IllegalStateException("Organization context is missing");
+    }
+
+    private boolean isOwnDoctorOnly(CurrentUser user) {
+        return user.hasScope(ResourceScope.OWN_DOCTOR) && !user.hasScope(ResourceScope.ORGANIZATION);
+    }
+
+    private void requireConversationAccess(WhatsAppConversation conversation, CurrentUser user) {
+        if (!isOwnDoctorOnly(user)) {
+            return;
+        }
+        Long doctorId = conversation.getDoctor() == null ? null : conversation.getDoctor().getId();
+        if (user.doctorId() == null || !user.doctorId().equals(doctorId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "WhatsApp conversation not found");
+        }
+    }
+
+    private Doctor defaultConversationDoctor(Long organizationId, CurrentUser user) {
+        if (isOwnDoctorOnly(user)) {
+            return doctorRepo.findByIdAndOrganizationId(user.doctorId(), organizationId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found"));
+        }
+        List<Doctor> doctors = doctorRepo.findByOrganizationId(organizationId);
+        if (doctors.isEmpty()) {
+            throw new IllegalStateException("No doctor is available for this organization");
+        }
+        return doctors.get(0);
     }
 
     private MessageType parseMessageType(String rawType) {

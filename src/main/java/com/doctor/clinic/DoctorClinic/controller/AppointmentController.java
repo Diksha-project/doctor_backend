@@ -83,7 +83,9 @@ public class AppointmentController {
 	 @PatchMapping("/status")
 	    public ResponseEntity<Map<String, Object>> updateStatus(@RequestBody UpdateStatusRequest request) {
 	        Appointment appointment = requireAppointmentInOrganization(request.getAppointmentId(), organizationId());
-	        authorizationService.requireDoctorPermission(PermissionCode.APPOINTMENTS_EDIT, organizationId(),
+	        authorizationService.requireDoctorPermission("CANCELLED".equalsIgnoreCase(request.getStatus())
+	                        ? PermissionCode.APPOINTMENTS_CANCEL
+	                        : PermissionCode.APPOINTMENTS_EDIT, organizationId(),
 	        		appointment.getDoctor() == null ? null : appointment.getDoctor().getId());
 	        return ResponseEntity.ok(appointmentService.updateAppointmentStatus(request));
 	    }
@@ -112,7 +114,7 @@ public class AppointmentController {
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
 			@RequestParam(required = false) String search,
 			@RequestParam(required = false) String status) {
-		authorizationService.requireDoctorPermission(PermissionCode.APPOINTMENTS_VIEW, organizationId(), doctorId);
+		authorizationService.requireOrganizationDoctorPermission(PermissionCode.APPOINTMENTS_VIEW, organizationId(), doctorId);
 		requireDoctorInOrganization(doctorId, organizationId());
 		return ResponseEntity.ok(ApiResponse.success(appointmentService.listForDoctor(doctorId, from, to, search, status)));
 	}

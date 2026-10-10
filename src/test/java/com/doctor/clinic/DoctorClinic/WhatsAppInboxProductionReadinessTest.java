@@ -8,6 +8,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -23,6 +24,8 @@ import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.doctor.clinic.DoctorClinic.AIServices.WhatsappServiceImpl;
 import com.doctor.clinic.DoctorClinic.CustomException.BusinessException;
@@ -39,6 +42,7 @@ import com.doctor.clinic.DoctorClinic.model.MessageDirection;
 import com.doctor.clinic.DoctorClinic.model.MessageSenderType;
 import com.doctor.clinic.DoctorClinic.model.MessageStatus;
 import com.doctor.clinic.DoctorClinic.model.OrganizationType;
+import com.doctor.clinic.DoctorClinic.model.ResourceScope;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
 import com.doctor.clinic.DoctorClinic.repo.AppUserRepo;
 import com.doctor.clinic.DoctorClinic.repo.OrganizationRepo;
@@ -48,6 +52,7 @@ import com.doctor.clinic.DoctorClinic.repo.ProcessedWhatsappMessageRepo;
 import com.doctor.clinic.DoctorClinic.repo.WhatsAppConversationRepo;
 import com.doctor.clinic.DoctorClinic.repo.WhatsAppMessageRepo;
 import com.doctor.clinic.DoctorClinic.security.JwtUtil;
+import com.doctor.clinic.DoctorClinic.security.CurrentUser;
 import com.doctor.clinic.DoctorClinic.config.WebSocketConfig;
 import com.doctor.clinic.DoctorClinic.serviceImpl.WhatsAppLegacyHistoryBackfillService;
 import com.doctor.clinic.DoctorClinic.serviceImpl.WhatsAppConversationServiceImpl;
@@ -169,6 +174,7 @@ class WhatsAppInboxProductionReadinessTest {
         conversation.setAiEnabled(true);
         conversation.setHumanTakeover(false);
         conversation = conversationRepo.save(conversation);
+        authenticateFor(organization);
 
         conversationService.toggleTakeover(conversation.getId(), organization.getId(), true);
         WhatsAppConversation takeoverState = conversationRepo.findById(conversation.getId()).orElseThrow();
@@ -262,6 +268,7 @@ class WhatsAppInboxProductionReadinessTest {
         WhatsAppConversation conversation = conversationService.upsertConversation(
                 records.organization().getId(), records.patient(),
                 "91" + records.patient().getNormalizedPhone(), records.doctor());
+        authenticateFor(records.organization());
         String manualProviderId = "wamid.manual-" + UUID.randomUUID();
         when(whatsappService.sendMessageWithResult(any(Doctor.class), anyString(), anyString()))
                 .thenReturn(new WhatsappServiceImpl.SendResult(true, manualProviderId));
@@ -287,6 +294,14 @@ class WhatsAppInboxProductionReadinessTest {
                 LocalDateTime.now(), null));
         assertEquals(MessageStatus.DELIVERED,
                 whatsappMessageRepo.findById(ai.getId()).orElseThrow().getStatus());
+    }
+
+    private void authenticateFor(Organization organization) {
+        CurrentUser currentUser = new CurrentUser(
+                1L, organization.getId(), null, "test@example.com", "Test User",
+                Set.of("ADMIN"), Set.of(), Set.of(ResourceScope.ORGANIZATION));
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(currentUser, null, List.of()));
     }
 
     @Test
