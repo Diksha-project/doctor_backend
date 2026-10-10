@@ -21,12 +21,20 @@ public class AuthorizationService {
         return user;
     }
 
+    public CurrentUser requirePermission(PermissionCode permission) {
+        return requirePermission(permission.code());
+    }
+
     public CurrentUser requireOrganizationPermission(String permission, Long organizationId) {
         CurrentUser user = requirePermission(permission);
         if (organizationId == null || !organizationId.equals(user.organizationId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Resource not found");
         }
         return user;
+    }
+
+    public CurrentUser requireOrganizationPermission(PermissionCode permission, Long organizationId) {
+        return requireOrganizationPermission(permission.code(), organizationId);
     }
 
     public CurrentUser requireDoctorPermission(String permission, Long organizationId, Long doctorId) {
@@ -44,5 +52,9 @@ public class AuthorizationService {
 
     public CurrentUser requireOwnOrganization() {
         return currentUserService.getRequiredCurrentUser();
+    }
+
+    public CurrentUser requireDoctorPermission(PermissionCode permission, Long organizationId, Long doctorId) {
+        return requireDoctorPermission(permission.code(), organizationId, doctorId);
     }
 }

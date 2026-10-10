@@ -56,7 +56,7 @@ public class DoctorController {
 	
 	@PostMapping("/add")
 	ResponseEntity<String> registerDoctor( @Valid @RequestBody DoctorRegisterRequest doctorRequest){
-		authorizationService.requirePermission(PermissionCode.DOCTORS_MANAGE);
+		authorizationService.requirePermission(PermissionCode.DOCTORS_EDIT);
 		CurrentUser currentUser = currentUserService.getRequiredCurrentUser();
 		boolean matchesOwnOrganization = organizationRepo.findByOrganizationName(doctorRequest.getOrganizationName())
 				.map(org -> currentUser.organizationId().equals(org.getId()))
@@ -76,7 +76,7 @@ public class DoctorController {
         
         try {
             DoctorResponse doctor = doctorService.getDoctorDetailsByID(request.getDoctorId());
-            authorizationService.requireDoctorPermission(PermissionCode.WHATSAPP_MANAGE, doctor.getOrganizationId(), request.getDoctorId());
+            authorizationService.requireDoctorPermission(PermissionCode.WHATSAPP_CONFIGURATION_EDIT, doctor.getOrganizationId(), request.getDoctorId());
             Map<String, Object> response = doctorService.activateNumber(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {

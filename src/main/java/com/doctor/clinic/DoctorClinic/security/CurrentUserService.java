@@ -12,7 +12,6 @@ import org.springframework.web.server.ResponseStatusException;
 import com.doctor.clinic.DoctorClinic.entity.AppUser;
 import com.doctor.clinic.DoctorClinic.model.ResourceScope;
 import com.doctor.clinic.DoctorClinic.repo.AppUserRepo;
-import com.doctor.clinic.DoctorClinic.repo.PermissionRepo;
 
 import lombok.RequiredArgsConstructor;
 
@@ -20,7 +19,6 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class CurrentUserService {
     private final AppUserRepo appUserRepo;
-    private final PermissionRepo permissionRepo;
 
     public CurrentUser getRequiredCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -44,9 +42,7 @@ public class CurrentUserService {
         Set<String> permissions = appUserRepo.findPermissionCodesByUserId(user.getId());
 
         if (roles.contains("SUPER_ADMIN")) {
-            permissions = permissionRepo.findAll().stream()
-                    .map(permission -> permission.getCode())
-                    .collect(Collectors.toSet());
+            permissions = PermissionCode.allCodes();
         }
 
         Set<ResourceScope> scopes = appUserRepo.findActiveScopeNamesByUserId(user.getId()).stream()

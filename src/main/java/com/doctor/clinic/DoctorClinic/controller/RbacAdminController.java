@@ -1,10 +1,8 @@
 package com.doctor.clinic.DoctorClinic.controller;
 
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -41,6 +39,8 @@ import lombok.RequiredArgsConstructor;
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
 public class RbacAdminController {
+    // PermissionCode is the single catalogue. Legacy rows remain only for recovery.
+    private static final List<PermissionCode> PERMISSION_OPTIONS = List.of(PermissionCode.values());
     private final AuthorizationService authorizationService;
     private final AppUserRepo appUserRepo;
     private final RoleRepo roleRepo;
@@ -51,13 +51,12 @@ public class RbacAdminController {
     @GetMapping("/permissions")
     public List<Map<String, Object>> permissions() {
         authorizationService.requirePermission(PermissionCode.ROLES_VIEW);
-        return permissionRepo.findAll().stream()
-                .sorted(Comparator.comparing(Permission::getModule).thenComparing(Permission::getCode))
-                .map(permission -> Map.<String, Object>of(
-                        "code", permission.getCode(),
-                        "module", permission.getModule(),
-                        "action", permission.getAction(),
-                        "description", permission.getDescription() == null ? "" : permission.getDescription()))
+        return PERMISSION_OPTIONS.stream()
+                .map(option -> Map.<String, Object>of(
+                        "code", option.code(),
+                        "module", option.module(),
+                        "action", option.action(),
+                        "description", option.description()))
                 .toList();
     }
 
@@ -71,7 +70,7 @@ public class RbacAdminController {
     @PostMapping("/roles")
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> createRole(@RequestBody RoleUpsertRequest request) {
-        CurrentUser currentUser = authorizationService.requirePermission(PermissionCode.ROLES_MANAGE);
+        CurrentUser currentUser = authorizationService.requirePermission(PermissionCode.ROLES_EDIT);
         String code = normalizeCode(request.getCode() == null ? request.getName() : request.getCode());
         if (roleRepo.existsByOrganizationIdAndCodeIgnoreCase(currentUser.organizationId(), code)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Role code already exists");
@@ -90,7 +89,7 @@ public class RbacAdminController {
 
     @PutMapping("/roles/{roleId}")
     public Map<String, Object> updateRole(@PathVariable Long roleId, @RequestBody RoleUpsertRequest request) {
-        CurrentUser currentUser = authorizationService.requirePermission(PermissionCode.ROLES_MANAGE);
+        CurrentUser currentUser = authorizationService.requirePermission(PermissionCode.ROLES_EDIT);
         Role role = roleRepo.findWithPermissionsById(roleId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Role not found"));
         if (role.getOrganization() == null || !currentUser.organizationId().equals(role.getOrganization().getId())) {
@@ -113,7 +112,7 @@ public class RbacAdminController {
     @PostMapping("/users")
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> createUser(@RequestBody UserUpsertRequest request) {
-        CurrentUser currentUser = authorizationService.requirePermission(PermissionCode.USERS_MANAGE);
+        CurrentUser currentUser = authorizationService.requirePermission(PermissionCode.USERS_EDIT);
         if (request.getEmail() == null || request.getPassword() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email and password are required");
         }
@@ -134,7 +133,7 @@ public class RbacAdminController {
 
     @PutMapping("/users/{userId}")
     public Map<String, Object> updateUser(@PathVariable Long userId, @RequestBody UserUpsertRequest request) {
-        CurrentUser currentUser = authorizationService.requirePermission(PermissionCode.USERS_MANAGE);
+        CurrentUser currentUser = authorizationService.requirePermission(PermissionCode.USERS_EDIT);
         AppUser user = appUserRepo.findByIdAndOrganizationId(userId, currentUser.organizationId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         user.setFullName(requiredText(request.getFullName(), "Full name is required"));
@@ -159,7 +158,7 @@ public class RbacAdminController {
 
     @PatchMapping("/users/{userId}/active")
     public Map<String, Object> setUserActive(@PathVariable Long userId, @RequestBody Map<String, Boolean> request) {
-        CurrentUser currentUser = authorizationService.requirePermission(PermissionCode.USERS_MANAGE);
+        CurrentUser currentUser = authorizationService.requirePermission(PermissionCode.USERS_EDIT);
         AppUser user = appUserRepo.findByIdAndOrganizationId(userId, currentUser.organizationId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         boolean active = Boolean.TRUE.equals(request.get("active"));
@@ -210,18 +209,25 @@ public class RbacAdminController {
         if (permissionCodes == null || permissionCodes.isEmpty()) {
             return Set.of();
         }
-        Set<String> requestedCodes = permissionCodes.stream()
+        Set<String> canonicalCodes = permissionCodes.stream()
+                .filter(code -> code != null && !code.isBlank())
                 .map(String::trim)
-                .filter(code -> !code.isBlank())
-                .collect(Collectors.toSet());
-        Set<Permission> permissions = permissionRepo.findByCodeIn(requestedCodes).stream().collect(Collectors.toSet());
-        if (permissions.size() != requestedCodes.size()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown permission code");
+                .distinct()
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+        if (canonicalCodes.stream().anyMatch(code -> PermissionCode.fromCode(code).isEmpty())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown canonical permission code");
+        }
+        Set<Permission> permissions = new java.util.HashSet<>(permissionRepo.findByCodeIn(canonicalCodes));
+        if (permissions.size() != canonicalCodes.size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Canonical permission is not available");
         }
         return permissions;
     }
 
     private Map<String, Object> roleResponse(Role role) {
+        Set<String> rawCodes = role.getPermissions().stream().map(Permission::getCode)
+                .filter(code -> PermissionCode.fromCode(code).isPresent())
+                .collect(java.util.stream.Collectors.toSet());
         return Map.of(
                 "id", role.getId(),
                 "code", role.getCode(),
@@ -229,7 +235,10 @@ public class RbacAdminController {
                 "description", role.getDescription() == null ? "" : role.getDescription(),
                 "systemRole", role.isSystemRole(),
                 "active", role.isActive(),
-                "permissions", role.getPermissions().stream().map(Permission::getCode).sorted().toList());
+                "permissions", PERMISSION_OPTIONS.stream()
+                        .map(PermissionCode::code)
+                        .filter(rawCodes::contains)
+                        .toList());
     }
 
     private Map<String, Object> userResponse(AppUser user) {
@@ -264,4 +273,5 @@ public class RbacAdminController {
     private String normalizeCode(String value) {
         return requiredText(value, "Role code is required").trim().toUpperCase().replaceAll("[^A-Z0-9]+", "_");
     }
+
 }
