@@ -32,7 +32,7 @@ import com.doctor.clinic.DoctorClinic.service.DoctorService;
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping("/doctor")
+@RequestMapping({"/doctor", "/api/doctor"})
 public class DoctorController {
 	
 	
