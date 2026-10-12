@@ -17,12 +17,14 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Comparator;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -422,6 +424,7 @@ public class GeminiServiceLatest {
 
         LocalDate today =
                 LocalDate.now();
+        LocalTime now = LocalTime.now();
 
         LocalDate nextWeek =
                 today.plusDays(7);
@@ -436,6 +439,11 @@ public class GeminiServiceLatest {
 
         Map<LocalDate, List<DoctorSlot>> slotsByDate =
                 availableSlots.stream()
+                        .filter(DoctorSlot::hasAvailability)
+                        .filter(slot -> slot.getSlotDate().isAfter(today)
+                                || (slot.getSlotDate().equals(today) && slot.getStartTime().isAfter(now)))
+                        .sorted(Comparator.comparing(DoctorSlot::getSlotDate)
+                                .thenComparing(DoctorSlot::getStartTime))
                         .collect(
                                 Collectors.groupingBy(
                                         DoctorSlot::getSlotDate

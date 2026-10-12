@@ -122,6 +122,7 @@ public class AppointmentOverflowService {
         for (Doctor doctor : doctorRepo.findByStatus("ACTIVE")) {
             doctor = doctorRepo.findByIdForUpdate(doctor.getId()).orElse(null);
             if (doctor == null) continue;
+            if (Boolean.FALSE.equals(doctor.getOrganization().getAppointmentAutomationEnabled())) continue;
             List<Appointment> todayAppointments = appointmentRepo
                     .findByDoctorIdAndAppointmentDate(doctor.getId(), today).stream()
                     .filter(this::isStillUnseen).sorted(Comparator.comparing(Appointment::getAppointmentTime))

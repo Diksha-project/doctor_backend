@@ -112,6 +112,10 @@ public class Organization {
 	@Builder.Default
 	private Integer overflowCheckIntervalMinutes = 30;
 
+	@Column(name = "appointment_automation_enabled", nullable = false)
+	@Builder.Default
+	private Boolean appointmentAutomationEnabled = true;
+
 	// Relationships
 	@OneToMany(mappedBy = "organization", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
 	@Builder.Default

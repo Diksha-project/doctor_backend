@@ -127,18 +127,22 @@ public class OrganizationServiceImpl implements OrganizationService {
 	}
 
 	@Override
-	public Map<String, Integer> getAutomationSettings(Long organizationId) {
+	public Map<String, Object> getAutomationSettings(Long organizationId) {
 		Organization org = organizationRepo.findById(organizationId)
 				.orElseThrow(() -> new RuntimeException("Organization not found"));
 		return Map.of("overflowCheckIntervalMinutes", org.getOverflowCheckIntervalMinutes() == null ? 30
-				: org.getOverflowCheckIntervalMinutes());
+				: org.getOverflowCheckIntervalMinutes(), "appointmentAutomationEnabled",
+				org.getAppointmentAutomationEnabled() == null ? true : org.getAppointmentAutomationEnabled());
 	}
 
 	@Override
-	public Map<String, Integer> updateAutomationSettings(Long organizationId, UpdateAutomationSettingsRequest request) {
+	public Map<String, Object> updateAutomationSettings(Long organizationId, UpdateAutomationSettingsRequest request) {
 		Organization org = organizationRepo.findById(organizationId)
 				.orElseThrow(() -> new RuntimeException("Organization not found"));
 		org.setOverflowCheckIntervalMinutes(request.getOverflowCheckIntervalMinutes());
+		if (request.getAppointmentAutomationEnabled() != null) {
+			org.setAppointmentAutomationEnabled(request.getAppointmentAutomationEnabled());
+		}
 		organizationRepo.save(org);
 		return getAutomationSettings(organizationId);
 	}

@@ -139,6 +139,9 @@ public class BookingRequestService {
 
         List<DoctorSlot> slots = doctorSlotRepo.findAllById(slotIds).stream()
                 .filter(s -> s.getDoctor().getId().equals(request.getDoctor().getId()))
+                .filter(DoctorSlot::hasAvailability)
+                .filter(s -> s.getSlotDate().isAfter(LocalDate.now())
+                        || (s.getSlotDate().equals(LocalDate.now()) && s.getStartTime().isAfter(LocalTime.now())))
                 .sorted(Comparator.comparing(DoctorSlot::getSlotDate).thenComparing(DoctorSlot::getStartTime))
                 .toList();
         if (slots.isEmpty()) {
@@ -153,13 +156,21 @@ public class BookingRequestService {
                     "title", title.length() > 24 ? title.substring(0, 24) : title,
                     "description", "Tap to book this time"));
         }
-        String body = "Dr. " + request.getDoctor().getFullName()
-                + " now has these appointment times available. Please choose one:";
+        String body = request.getReason() != null && request.getReason().startsWith("Doctor unavailable")
+                ? "Your appointment was cancelled because Dr. " + request.getDoctor().getFullName()
+                        + " is unavailable. Please choose a new appointment time:"
+                : "Dr. " + request.getDoctor().getFullName()
+                        + " now has these appointment times available. Please choose one:";
         Map<String, Object> interactive = Map.of("type", "list", "body", Map.of("text", body), "action",
                 Map.of("button", "Choose time", "sections", List.of(Map.of("title", "Available times", "rows", rows))));
 
-        conversationService.sendAutomatedMessage(organizationId, request.getPatient(), request.getDoctor(),
-                request.getPatientPhone(), body, interactive);
+        if (request.getReason() != null && request.getReason().startsWith("Doctor unavailable")) {
+            conversationService.sendSystemNotification(organizationId, request.getPatient(), request.getDoctor(),
+                    request.getPatientPhone(), body, interactive);
+        } else {
+            conversationService.sendAutomatedMessage(organizationId, request.getPatient(), request.getDoctor(),
+                    request.getPatientPhone(), body, interactive);
+        }
 
         request.setOfferedSlotIds(slots.stream().map(s -> String.valueOf(s.getId())).collect(Collectors.joining(",")));
         request.setOfferedAt(java.time.LocalDateTime.now());

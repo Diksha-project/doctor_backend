@@ -52,6 +52,7 @@ public class DoctorAvailabilityServiceImpl implements DoctorAvailabilityService 
     private final DoctorAvailabilitySettingsRepo settingsRepo;
     private final DoctorAvailabilityExceptionRepo exceptionRepo;
     private final DoctorSlotRepo doctorSlotRepo;
+    private final DoctorUnavailableAutomationService unavailableAutomationService;
 
     @Override
     @Transactional(readOnly = true)
@@ -151,6 +152,10 @@ public class DoctorAvailabilityServiceImpl implements DoctorAvailabilityService 
                 .reason(request.getReason())
                 .build();
         exceptionRepo.save(exception);
+
+        if (request.getType() == AvailabilityExceptionType.DAY_OFF) {
+            unavailableAutomationService.cancelAndOfferReschedule(doctor, request.getDate(), request.getReason());
+        }
 
         generateSlots(doctorId);
         return buildResponse(doctor);

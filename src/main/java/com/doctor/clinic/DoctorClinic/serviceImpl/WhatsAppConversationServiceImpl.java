@@ -176,6 +176,15 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
         return message.getStatus() == MessageStatus.SENT;
     }
 
+    /** Explicit system notice path for urgent doctor-unavailable cancellations. */
+    @Transactional
+    public boolean sendSystemNotification(Long organizationId, Patient patient, Doctor doctor,
+                                          String phoneNumber, String content, Map<String, Object> interactive) {
+        WhatsAppConversation conversation = findOrCreateConversation(organizationId, patient, phoneNumber, doctor);
+        WhatsAppMessage message = sendPersistedOutbound(conversation, content, MessageType.TEXT, true, interactive, doctor);
+        return message.getStatus() == MessageStatus.SENT;
+    }
+
     private WhatsAppMessage sendPersistedOutbound(WhatsAppConversation conversation, String content,
                                                    MessageType type, boolean aiGenerated,
                                                    Map<String, Object> interactive, Doctor deliveryDoctor) {
