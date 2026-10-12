@@ -89,7 +89,7 @@ public class DoctorController {
 				"Only Super Admin can update sensitive profile fields directly");
 		}
 		profileChangeService.updateDirectly(doctorId, current.getOrganizationId(), request);
-		return ResponseEntity.ok(doctorService.getDoctorDetailsByID(doctorId));
+		return ResponseEntity.ok(Map.of("success", true, "doctorId", doctorId));
 	}
 
 	@GetMapping("/profile-change-requests")
