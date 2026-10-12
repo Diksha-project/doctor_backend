@@ -21,6 +21,7 @@ import com.doctor.clinic.DoctorClinic.entity.DoctorSlot;
 import com.doctor.clinic.DoctorClinic.entity.Patient;
 import com.doctor.clinic.DoctorClinic.model.AvailabilityExceptionType;
 import com.doctor.clinic.DoctorClinic.repo.AppointmentRepo;
+import com.doctor.clinic.DoctorClinic.repo.AppointmentOverflowRequestRepo;
 import com.doctor.clinic.DoctorClinic.repo.DoctorAvailabilityExceptionRepo;
 import com.doctor.clinic.DoctorClinic.repo.DoctorAvailabilitySettingsRepo;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
@@ -57,6 +58,9 @@ public class AppointmentServiceImpl implements AppointmentService {
 
 	@Autowired
 	private DoctorAvailabilityExceptionRepo doctorAvailabilityExceptionRepo;
+
+	@Autowired
+	private AppointmentOverflowRequestRepo appointmentOverflowRequestRepo;
 
 	@Autowired
 	private PatientProfileService patientProfileService;
@@ -267,12 +271,14 @@ public class AppointmentServiceImpl implements AppointmentService {
 			}
 			if (exception.getExceptionType() == AvailabilityExceptionType.CUSTOM_LIMIT
 					&& exception.getMaxAppointments() != null) {
-				return exception.getMaxAppointments();
+				return exception.getMaxAppointments() + appointmentOverflowRequestRepo.sumApprovedCapacity(doctorId, date);
 			}
 		}
-		return doctorAvailabilitySettingsRepo.findByDoctorId(doctorId)
+		Integer configuredLimit = doctorAvailabilitySettingsRepo.findByDoctorId(doctorId)
 				.map(DoctorAvailabilitySettings::getMaxAppointmentsPerDay)
 				.orElse(null);
+		if (configuredLimit == null) return null;
+		return configuredLimit + appointmentOverflowRequestRepo.sumApprovedCapacity(doctorId, date);
 	}
 
 	private static final String[] ALLOWED_STATUS = { "SCHEDULED", "CONFIRMED", "COMPLETED", "CANCELLED", "NO_SHOW" };

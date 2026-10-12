@@ -42,6 +42,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
     private final AppointmentBookingChatService appointmentBookingChatService;
     private final WhatsAppConversationServiceImpl conversationService;
     private final BookingRequestService bookingRequestService;
+    private final AppointmentOverflowService appointmentOverflowService;
     private final ClinicMessageScopeDetector clinicMessageScopeDetector;
 
     public WhatsAppAutomationServiceImpl(DoctorRepo doctorRepo,
@@ -54,6 +55,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                                         AppointmentBookingChatService appointmentBookingChatService,
                                         WhatsAppConversationServiceImpl conversationService,
                                         BookingRequestService bookingRequestService,
+                                        AppointmentOverflowService appointmentOverflowService,
                                         ClinicMessageScopeDetector clinicMessageScopeDetector) {
         this.doctorRepo = doctorRepo;
         this.patientRepo = patientRepo;
@@ -65,6 +67,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
         this.appointmentBookingChatService = appointmentBookingChatService;
         this.conversationService = conversationService;
         this.bookingRequestService = bookingRequestService;
+        this.appointmentOverflowService = appointmentOverflowService;
         this.clinicMessageScopeDetector = clinicMessageScopeDetector;
     }
 
@@ -77,6 +80,14 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
             Doctor doctor = doctorRepo.findById(doctorId).orElse(null);
             if (doctor == null || !doctor.getOrganization().getId().equals(organizationId)) {
                 log.warn("Skipping WhatsApp automation for unknown doctor {} in org {}", doctorId, organizationId);
+                return;
+            }
+
+            if (samePhone(doctor.getPhoneNumber(), phoneNumber)) {
+                String decision = appointmentOverflowService.handleWhatsAppDecision(doctorId, selectionId, messageText);
+                if (decision != null) {
+                    whatsappService.sendMessage(doctor, phoneNumber, decision);
+                }
                 return;
             }
 
@@ -119,6 +130,15 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
             log.error("WhatsApp automation processing failed for orgId={} doctorId={} patientId={} phoneNumber={}",
                     organizationId, doctorId, patientId, phoneNumber, ex);
         }
+    }
+
+    private boolean samePhone(String first, String second) {
+        if (first == null || second == null) return false;
+        String a = first.replaceAll("\\D", "");
+        String b = second.replaceAll("\\D", "");
+        if (a.length() == 10) a = "91" + a;
+        if (b.length() == 10) b = "91" + b;
+        return a.equals(b);
     }
 
     private String resolveResponse(Doctor doctor, Patient patient, WhatsAppConversation conversation, String messageText,

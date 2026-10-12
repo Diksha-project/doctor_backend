@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +25,7 @@ import com.doctor.clinic.DoctorClinic.repo.DoctorSlotRepo;
 import com.doctor.clinic.DoctorClinic.repo.OrganizationRepo;
 import com.doctor.clinic.DoctorClinic.repo.RoleRepo;
 import com.doctor.clinic.DoctorClinic.request.OrganizationRegistrationRequest;
+import com.doctor.clinic.DoctorClinic.request.UpdateAutomationSettingsRequest;
 import com.doctor.clinic.DoctorClinic.response.DoctorListInfo;
 import com.doctor.clinic.DoctorClinic.response.OrganizationDashboardResponse;
 import com.doctor.clinic.DoctorClinic.response.OrganizationSummary;
@@ -122,6 +124,23 @@ public class OrganizationServiceImpl implements OrganizationService {
 		return OrganizationDashboardResponse.builder().organizationId(org.getId())
 				.organizationName(org.getOrganizationName()).organizationType(org.getOrganizationType().name())
 				.currentDate(today).summary(summary).doctors(doctorList).build();
+	}
+
+	@Override
+	public Map<String, Integer> getAutomationSettings(Long organizationId) {
+		Organization org = organizationRepo.findById(organizationId)
+				.orElseThrow(() -> new RuntimeException("Organization not found"));
+		return Map.of("overflowCheckIntervalMinutes", org.getOverflowCheckIntervalMinutes() == null ? 30
+				: org.getOverflowCheckIntervalMinutes());
+	}
+
+	@Override
+	public Map<String, Integer> updateAutomationSettings(Long organizationId, UpdateAutomationSettingsRequest request) {
+		Organization org = organizationRepo.findById(organizationId)
+				.orElseThrow(() -> new RuntimeException("Organization not found"));
+		org.setOverflowCheckIntervalMinutes(request.getOverflowCheckIntervalMinutes());
+		organizationRepo.save(org);
+		return getAutomationSettings(organizationId);
 	}
 
 	private DoctorListInfo buildDoctorInfo(Doctor doctor, LocalDate date) {

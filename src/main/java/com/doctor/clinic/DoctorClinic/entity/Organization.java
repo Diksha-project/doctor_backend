@@ -108,6 +108,10 @@ public class Organization {
 	@Builder.Default
 	private LocalDateTime updatedAt = LocalDateTime.now();
 
+	@Column(name = "overflow_check_interval_minutes", nullable = false)
+	@Builder.Default
+	private Integer overflowCheckIntervalMinutes = 30;
+
 	// Relationships
 	@OneToMany(mappedBy = "organization", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
 	@Builder.Default

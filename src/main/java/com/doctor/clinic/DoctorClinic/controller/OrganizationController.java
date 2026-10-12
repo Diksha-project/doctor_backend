@@ -7,8 +7,11 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import com.doctor.clinic.DoctorClinic.request.OrganizationRegistrationRequest;
+import com.doctor.clinic.DoctorClinic.request.UpdateAutomationSettingsRequest;
 import com.doctor.clinic.DoctorClinic.response.OrganizationDashboardResponse;
 import com.doctor.clinic.DoctorClinic.security.AuthorizationService;
 import com.doctor.clinic.DoctorClinic.security.PermissionCode;
@@ -27,6 +30,19 @@ public class OrganizationController {
 	        this.organizationService = organizationService;
 	        this.authorizationService = authorizationService;
 	    }
+
+	@GetMapping("/{organizationId}/automation-settings")
+	public ResponseEntity<?> getAutomationSettings(@PathVariable Long organizationId) {
+		authorizationService.requireOrganizationPermission(PermissionCode.ORGANIZATION_VIEW, organizationId);
+		return ResponseEntity.ok(organizationService.getAutomationSettings(organizationId));
+	}
+
+	@PutMapping("/{organizationId}/automation-settings")
+	public ResponseEntity<?> updateAutomationSettings(@PathVariable Long organizationId,
+			@Valid @RequestBody UpdateAutomationSettingsRequest request) {
+		authorizationService.requireOrganizationPermission(PermissionCode.ORGANIZATION_EDIT, organizationId);
+		return ResponseEntity.ok(organizationService.updateAutomationSettings(organizationId, request));
+	}
 	
 	@PostMapping("/register")
 	ResponseEntity<String> registerDoctor(@Valid @RequestBody OrganizationRegistrationRequest orgRequest){
