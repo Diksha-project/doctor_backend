@@ -12,6 +12,7 @@ import com.doctor.clinic.DoctorClinic.entity.Organization;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
 import com.doctor.clinic.DoctorClinic.repo.OrganizationRepo;
 import com.doctor.clinic.DoctorClinic.request.DoctorRegisterRequest;
+import com.doctor.clinic.DoctorClinic.request.BasicDoctorProfileUpdateRequest;
 import com.doctor.clinic.DoctorClinic.request.WhatsAppBusinessActivateRequest;
 import com.doctor.clinic.DoctorClinic.response.DoctorResponse;
 import com.doctor.clinic.DoctorClinic.service.DoctorService;
@@ -135,9 +136,11 @@ public class DoctorServiceImpl implements DoctorService {
 	            .email(doctor.getEmail())
 	            .consultationFee(doctor.getConsultationFee())
 	            .consultationHours(doctor.getConsultationHours())
+	            .address(doctor.getAddress())
+	            .bio(doctor.getBio())
 	            .status(doctor.getStatus())
 	            .defaultSlotDurationMinutes(doctor.getDefaultSlotDurationMinutes())
-	            .whatsappPhoneNumberId(doctor.getWhatsappPhoneNumberId())
+	            .whatsappPhoneNumberId(null)
 	            .whatsappNumber(doctor.getWhatsappNumber())
 	            .whatsappActivated(doctor.isWhatsappActivated())
 	            .createdAt(doctor.getCreatedAt())
@@ -145,5 +148,20 @@ public class DoctorServiceImpl implements DoctorService {
 	            .organizationId(doctor.getOrganization().getId())
 	            .organizationName(doctor.getOrganization().getOrganizationName())
 	            .build();
+	}
+
+	@Override
+	@org.springframework.transaction.annotation.Transactional
+	public DoctorResponse updateBasicProfile(Long doctorId, Long organizationId, BasicDoctorProfileUpdateRequest request) {
+		Doctor doctor = doctorRepo.findByIdAndOrganizationId(doctorId, organizationId)
+				.orElseThrow(() -> new RuntimeException("Doctor not found"));
+		String fullName = request.getFullName().trim();
+		int split = fullName.indexOf(' ');
+		doctor.setFirstName(split < 0 ? fullName : fullName.substring(0, split).trim());
+		doctor.setLastName(split < 0 ? null : fullName.substring(split + 1).trim());
+		doctor.setEmail(request.getEmail().trim());
+		doctor.setPhoneNumber(request.getPhoneNumber().trim());
+		doctor.setAddress(request.getAddress().trim());
+		return getDoctorDetailsByID(doctorRepo.save(doctor).getId());
 	}
 }

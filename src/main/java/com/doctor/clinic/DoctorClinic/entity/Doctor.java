@@ -65,6 +65,11 @@ public class Doctor {
     private BigDecimal consultationFee;
     
     private String consultationHours; // Simple text format
+
+    private String address;
+
+    @Column(length = 2000)
+    private String bio;
     
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "organization_id", nullable = false)

@@ -32,4 +32,8 @@ public record CurrentUser(
     public boolean hasScope(ResourceScope scope) {
         return scopes.contains(scope);
     }
+
+    public boolean isSuperAdmin() {
+        return roles.stream().anyMatch(role -> "SUPER_ADMIN".equalsIgnoreCase(role.replace("ROLE_", "")));
+    }
 }

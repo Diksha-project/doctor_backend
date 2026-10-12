@@ -14,6 +14,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.doctor.clinic.DoctorClinic.request.DoctorRegisterRequest;
+import com.doctor.clinic.DoctorClinic.request.BasicDoctorProfileUpdateRequest;
+import com.doctor.clinic.DoctorClinic.request.DoctorProfileChangeRequestPayload;
+import com.doctor.clinic.DoctorClinic.request.ReviewDoctorProfileChangeRequest;
+import com.doctor.clinic.DoctorClinic.model.DoctorProfileChangeStatus;
+import com.doctor.clinic.DoctorClinic.serviceImpl.DoctorProfileChangeService;
 import com.doctor.clinic.DoctorClinic.request.PatientMsgRequest;
 import com.doctor.clinic.DoctorClinic.request.WhatsAppBusinessActivateRequest;
 import com.doctor.clinic.DoctorClinic.response.DoctorResponse;
@@ -42,6 +47,9 @@ public class DoctorController {
 
 	@Autowired
 	private OrganizationRepo organizationRepo;
+
+	@Autowired
+	private DoctorProfileChangeService profileChangeService;
 	
 	
 	@GetMapping("/{doctorId}/details")
@@ -52,6 +60,63 @@ public class DoctorController {
     authorizationService.requireDoctorProfileAccess(response.getOrganizationId(), doctorId);
 
 	    return ResponseEntity.ok(response);
+	}
+
+	@org.springframework.web.bind.annotation.PutMapping("/{doctorId}/basic-info")
+	public ResponseEntity<DoctorResponse> updateBasicInfo(@PathVariable Long doctorId,
+			@Valid @RequestBody BasicDoctorProfileUpdateRequest request) {
+		DoctorResponse current = doctorService.getDoctorDetailsByID(doctorId);
+		authorizationService.requireDoctorPermission(PermissionCode.DOCTORS_EDIT, current.getOrganizationId(), doctorId);
+		return ResponseEntity.ok(doctorService.updateBasicProfile(doctorId, current.getOrganizationId(), request));
+	}
+
+	@PostMapping("/{doctorId}/profile-change-requests")
+	public ResponseEntity<?> submitProfileChange(@PathVariable Long doctorId,
+			@Valid @RequestBody DoctorProfileChangeRequestPayload request) {
+		DoctorResponse current = doctorService.getDoctorDetailsByID(doctorId);
+		CurrentUser user = authorizationService.requireDoctorPermission(PermissionCode.DOCTORS_EDIT, current.getOrganizationId(), doctorId);
+		return ResponseEntity.ok(profileChangeService.submit(doctorId, current.getOrganizationId(), user, request));
+	}
+
+	@org.springframework.web.bind.annotation.PutMapping("/{doctorId}/profile")
+	public ResponseEntity<?> updateProfileDirectly(@PathVariable Long doctorId,
+			@Valid @RequestBody DoctorProfileChangeRequestPayload request) {
+		DoctorResponse current = doctorService.getDoctorDetailsByID(doctorId);
+		CurrentUser user = authorizationService.requireOrganizationPermission(PermissionCode.DOCTORS_EDIT,
+				current.getOrganizationId());
+		if (!user.isSuperAdmin()) {
+			throw new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN,
+				"Only Super Admin can update sensitive profile fields directly");
+		}
+		profileChangeService.updateDirectly(doctorId, current.getOrganizationId(), request);
+		return ResponseEntity.ok(doctorService.getDoctorDetailsByID(doctorId));
+	}
+
+	@GetMapping("/profile-change-requests")
+	public ResponseEntity<?> listProfileChanges(
+			@org.springframework.web.bind.annotation.RequestParam(required = false) DoctorProfileChangeStatus status,
+			@org.springframework.web.bind.annotation.RequestParam(required = false) Long doctorId) {
+		CurrentUser user = authorizationService.requirePermission(PermissionCode.DOCTORS_VIEW);
+		Long scopedDoctor = user.hasScope(com.doctor.clinic.DoctorClinic.model.ResourceScope.OWN_DOCTOR) ? user.doctorId() : doctorId;
+		return ResponseEntity.ok(profileChangeService.list(user.organizationId(), scopedDoctor, status));
+	}
+
+	@PostMapping("/profile-change-requests/{requestId}/approve")
+	public ResponseEntity<?> approveProfileChange(@PathVariable Long requestId,
+			@RequestBody(required = false) ReviewDoctorProfileChangeRequest request) {
+		CurrentUser user = authorizationService.requireOrganizationPermission(PermissionCode.DOCTORS_EDIT,
+				currentUserService.getRequiredCurrentUser().organizationId());
+		return ResponseEntity.ok(profileChangeService.review(requestId, user.organizationId(), user, true,
+				request == null ? null : request.getReviewNote()));
+	}
+
+	@PostMapping("/profile-change-requests/{requestId}/reject")
+	public ResponseEntity<?> rejectProfileChange(@PathVariable Long requestId,
+			@RequestBody(required = false) ReviewDoctorProfileChangeRequest request) {
+		CurrentUser user = authorizationService.requireOrganizationPermission(PermissionCode.DOCTORS_EDIT,
+				currentUserService.getRequiredCurrentUser().organizationId());
+		return ResponseEntity.ok(profileChangeService.review(requestId, user.organizationId(), user, false,
+				request == null ? null : request.getReviewNote()));
 	}
 	
 	@PostMapping("/add")

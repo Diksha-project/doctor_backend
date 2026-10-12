@@ -22,6 +22,8 @@ public class DoctorResponse {
 	    private String email;
 	    private BigDecimal consultationFee;
 	    private String consultationHours;
+	    private String address;
+	    private String bio;
 	    private String status;
 	    private Integer defaultSlotDurationMinutes;
 
