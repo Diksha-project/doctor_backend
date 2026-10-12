@@ -8,6 +8,7 @@ import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -97,15 +98,38 @@ public class DoctorProfileChangeService {
         try {
             Map<String, Object> values = objectMapper.readValue(json, new TypeReference<>() {});
             if (values.containsKey("qualification")) doctor.setQualification(String.valueOf(values.get("qualification")));
-            if (values.containsKey("experienceYears")) doctor.setExperienceYears(Integer.valueOf(String.valueOf(values.get("experienceYears"))));
+            if (values.containsKey("experienceYears")) doctor.setExperienceYears(asInteger(values.get("experienceYears"), "experienceYears"));
             if (values.containsKey("specialization")) doctor.setSpecialization(String.valueOf(values.get("specialization")));
             if (values.containsKey("registrationNumber")) doctor.setRegistrationNumber(String.valueOf(values.get("registrationNumber")));
             if (values.containsKey("bio")) doctor.setBio(String.valueOf(values.get("bio")));
-            if (values.containsKey("consultationFee")) doctor.setConsultationFee(new java.math.BigDecimal(String.valueOf(values.get("consultationFee"))));
-            if (values.containsKey("defaultSlotDurationMinutes")) doctor.setDefaultSlotDurationMinutes(Integer.valueOf(String.valueOf(values.get("defaultSlotDurationMinutes"))));
+            if (values.containsKey("consultationFee")) doctor.setConsultationFee(asDecimal(values.get("consultationFee"), "consultationFee"));
+            if (values.containsKey("defaultSlotDurationMinutes")) doctor.setDefaultSlotDurationMinutes(asInteger(values.get("defaultSlotDurationMinutes"), "defaultSlotDurationMinutes"));
             if (values.containsKey("consultationHours")) doctor.setConsultationHours(String.valueOf(values.get("consultationHours")));
-            doctorRepo.save(doctor);
-        } catch (Exception e) { throw new BusinessException(400, "INVALID_PROFILE_VALUES", "Proposed profile values are invalid"); }
+            doctorRepo.saveAndFlush(doctor);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(409, "PROFILE_CONFLICT", "Registration number or another profile value is already in use");
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(400, "INVALID_PROFILE_VALUES", "Proposed profile values are invalid");
+        }
+    }
+
+    private Integer asInteger(Object value, String field) {
+        try {
+            if (value instanceof Number number) return new java.math.BigDecimal(String.valueOf(number)).intValueExact();
+            return Integer.valueOf(String.valueOf(value).trim());
+        } catch (Exception e) {
+            throw new BusinessException(400, "INVALID_PROFILE_VALUES", field + " must be a whole number");
+        }
+    }
+
+    private java.math.BigDecimal asDecimal(Object value, String field) {
+        try {
+            return new java.math.BigDecimal(String.valueOf(value).trim());
+        } catch (Exception e) {
+            throw new BusinessException(400, "INVALID_PROFILE_VALUES", field + " must be a valid amount");
+        }
     }
 
     private Map<String, Object> toMap(DoctorProfileChangeRequest r) {
