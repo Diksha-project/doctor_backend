@@ -1,6 +1,7 @@
 package com.doctor.clinic.DoctorClinic.serviceImpl;
 
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -70,7 +71,7 @@ public class CloudflareR2StorageService {
             current = client.get();
             if (current == null) {
                 S3Client created = S3Client.builder()
-                        .endpointOverride(URI.create("https://" + accountId + ".r2.cloudflarestorage.com"))
+                        .endpointOverride(endpointUri())
                         .credentialsProvider(StaticCredentialsProvider.create(
                                 AwsBasicCredentials.create(accessKeyId, secretAccessKey)))
                         .region(Region.of("auto"))
@@ -84,6 +85,30 @@ public class CloudflareR2StorageService {
             }
         }
         return current;
+    }
+
+    private URI endpointUri() {
+        String configured = accountId.trim();
+        try {
+            URI endpoint;
+            if (configured.startsWith("https://")) {
+                endpoint = new URI(configured.replaceAll("/+$", ""));
+            } else {
+                if (configured.contains(":") || configured.contains("/") || configured.contains("\\")) {
+                    throw new IllegalStateException("CLOUDFLARE_R2_ACCOUNT_ID must be the raw account ID or an HTTPS R2 endpoint");
+                }
+                endpoint = new URI("https://" + configured + ".r2.cloudflarestorage.com");
+            }
+            String host = endpoint.getHost();
+            if (!"https".equalsIgnoreCase(endpoint.getScheme()) || host == null
+                    || !host.toLowerCase(java.util.Locale.ROOT).endsWith(".r2.cloudflarestorage.com")
+                    || endpoint.getUserInfo() != null || endpoint.getQuery() != null || endpoint.getFragment() != null) {
+                throw new IllegalStateException("CLOUDFLARE_R2_ACCOUNT_ID must be a raw account ID or an HTTPS R2 endpoint");
+            }
+            return endpoint;
+        } catch (URISyntaxException e) {
+            throw new IllegalStateException("CLOUDFLARE_R2_ACCOUNT_ID is not a valid R2 endpoint", e);
+        }
     }
 
     private String extensionFor(String contentType) {
