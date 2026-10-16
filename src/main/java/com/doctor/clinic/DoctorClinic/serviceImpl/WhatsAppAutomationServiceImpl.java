@@ -16,6 +16,10 @@ import com.doctor.clinic.DoctorClinic.entity.Organization;
 import com.doctor.clinic.DoctorClinic.entity.Patient;
 import com.doctor.clinic.DoctorClinic.entity.WhatsAppConversation;
 import com.doctor.clinic.DoctorClinic.entity.WhatsAppResponseRule;
+import com.doctor.clinic.DoctorClinic.model.AutomationMode;
+import com.doctor.clinic.DoctorClinic.model.ConversationStatus;
+import com.doctor.clinic.DoctorClinic.entity.Appointment;
+import com.doctor.clinic.DoctorClinic.repo.AppointmentRepo;
 import com.doctor.clinic.DoctorClinic.model.ConversationStatus;
 import com.doctor.clinic.DoctorClinic.model.Intent;
 import com.doctor.clinic.DoctorClinic.model.ResponseMode;
@@ -46,6 +50,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
     private final ClinicMessageScopeDetector clinicMessageScopeDetector;
     private final CloudflareR2StorageService r2StorageService;
     private final PatientChatHistoryService patientChatHistoryService;
+    private final AppointmentRepo appointmentRepo;
 
     public WhatsAppAutomationServiceImpl(DoctorRepo doctorRepo,
                                         PatientRepo patientRepo,
@@ -60,7 +65,8 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                                         AppointmentOverflowService appointmentOverflowService,
                                         ClinicMessageScopeDetector clinicMessageScopeDetector,
                                         CloudflareR2StorageService r2StorageService,
-                                        PatientChatHistoryService patientChatHistoryService) {
+                                        PatientChatHistoryService patientChatHistoryService,
+                                        AppointmentRepo appointmentRepo) {
         this.doctorRepo = doctorRepo;
         this.patientRepo = patientRepo;
         this.conversationRepo = conversationRepo;
@@ -75,6 +81,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
         this.clinicMessageScopeDetector = clinicMessageScopeDetector;
         this.r2StorageService = r2StorageService;
         this.patientChatHistoryService = patientChatHistoryService;
+        this.appointmentRepo = appointmentRepo;
     }
 
     @Override
@@ -193,6 +200,32 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                                   String messageType, String mediaId, String mimeType, String attachmentName,
                                   String selectionId, Map<String, Object> interactiveOut,
                                   byte[] mediaBytes, String mediaContentType) {
+        if (selectionId != null && selectionId.startsWith("MENU_")) {
+            switch (selectionId) {
+                case "MENU_BOOK_APPOINTMENT" -> {
+                    Optional<AppointmentBookingChatService.Reply> booking = appointmentBookingChatService
+                            .handle(doctor, patient, "book appointment", null);
+                    if (booking.isPresent()) {
+                        if (booking.get().interactive() != null) interactiveOut.putAll(booking.get().interactive());
+                        return booking.get().text();
+                    }
+                }
+                case "MENU_MY_APPOINTMENTS" -> { return myAppointmentsReply(doctor, patient, conversation); }
+                case "MENU_ASK_HEALTH" -> { return "Please type your health question, and I’ll do my best to help. For urgent or severe symptoms, contact emergency services or the clinic directly."; }
+                case "MENU_REPORTS" -> { return "Medical reports and prescriptions you send here are saved securely to your patient record. Please contact clinic staff if you need help accessing them."; }
+                case "MENU_CLINIC_INFO" -> { return clinicInformationReply(doctor); }
+                case "MENU_TALK_TO_STAFF" -> {
+                    conversation.setHumanTakeover(true);
+                    conversation.setAiEnabled(false);
+                    conversation.setAutomationMode(AutomationMode.MANUAL);
+                    conversation.setStatus(ConversationStatus.MANUAL);
+                    conversationRepo.save(conversation);
+                    return "I’ve notified the clinic team. A staff member will follow up with you here.";
+                }
+                default -> { return greetingMenuText(); }
+            }
+        }
+
         String normalized = normalize(messageText);
         if (normalized == null || normalized.isBlank()) {
             return null;
@@ -241,7 +274,10 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
         Intent intent = intentDetector.detect(normalized);
         if (intent == Intent.GREETING || intent == Intent.THANKS || intent == Intent.GOODBYE) {
             return switch (intent) {
-                case GREETING -> "Hello! I am " + doctor.getFullName() + "'s virtual assistant. How can I help you with the clinic?";
+                case GREETING -> {
+                    interactiveOut.putAll(greetingMenu(doctor));
+                    yield greetingMenuText();
+                }
                 case THANKS -> "You’re welcome! Is there anything else I can help you with?";
                 case GOODBYE -> "Thank you for contacting the clinic. Have a great day!";
                 default -> null;
@@ -250,6 +286,54 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
 
         String recentHistory = "";
         return geminiServiceLatest.generateResponse(normalized, doctor, recentHistory, mediaBytes, mediaContentType);
+    }
+
+    private String greetingMenuText() {
+        return "Hi! How can we help you today? Choose an option or type your question.";
+    }
+
+    private Map<String, Object> greetingMenu(Doctor doctor) {
+        String title = "ARCHSTER HEALTH - CHATBOT MENU";
+        List<Map<String, Object>> rows = List.of(
+                menuRow("MENU_BOOK_APPOINTMENT", "Book an appointment", "Find a doctor and available time"),
+                menuRow("MENU_MY_APPOINTMENTS", "My appointments", "View upcoming appointments"),
+                menuRow("MENU_ASK_HEALTH", "Ask a health question", "General health information and guidance"),
+                menuRow("MENU_REPORTS", "Reports & prescriptions", "Access medical documents securely"),
+                menuRow("MENU_CLINIC_INFO", "Clinic information", "Fees, timings, location and services"),
+                menuRow("MENU_TALK_TO_STAFF", "Talk to clinic staff", "Request human assistance"));
+        return Map.of(
+                "type", "list",
+                "header", Map.of("type", "text", "text", title),
+                "body", Map.of("text", greetingMenuText()),
+                "footer", Map.of("text", "Dr. " + doctor.getFullName() + "'s clinic"),
+                "action", Map.of("button", "View options", "sections", List.of(Map.of("title", "How can we help?", "rows", rows))));
+    }
+
+    private Map<String, Object> menuRow(String id, String title, String description) {
+        return Map.of("id", id, "title", title, "description", description);
+    }
+
+    private String clinicInformationReply(Doctor doctor) {
+        String specialization = doctor.getSpecialization() == null ? "Medical consultation" : doctor.getSpecialization();
+        String hours = doctor.getConsultationHours() == null ? "Please contact the clinic for timings" : doctor.getConsultationHours();
+        String fee = doctor.getConsultationFee() == null ? "Please contact the clinic for the consultation fee" : "₹" + doctor.getConsultationFee();
+        return "Dr. " + doctor.getFullName() + " - " + specialization + "\nClinic hours: " + hours + "\nConsultation fee: " + fee;
+    }
+
+    private String myAppointmentsReply(Doctor doctor, Patient patient, WhatsAppConversation conversation) {
+        String phone = patient.getNormalizedPhone();
+        List<String> aliases = List.of(phone, "91" + phone, "+91" + phone, "0" + phone);
+        List<Appointment> appointments = appointmentRepo.findPatientHistory(
+                conversation.getOrganization().getId(), patient.getId(), aliases).stream()
+                .filter(appointment -> appointment.getAppointmentDate() != null
+                        && !appointment.getAppointmentDate().isBefore(java.time.LocalDate.now())
+                        && !"CANCELLED".equalsIgnoreCase(appointment.getAppointmentStatus()))
+                .limit(5).toList();
+        if (appointments.isEmpty()) return "You don’t have any upcoming appointments with Dr. " + doctor.getFullName() + ". Choose ‘Book an appointment’ if you’d like to schedule one.";
+        String details = appointments.stream().map(appointment -> appointment.getAppointmentDate() + " at "
+                + appointment.getAppointmentTime() + " - " + appointment.getAppointmentStatus())
+                .collect(java.util.stream.Collectors.joining("\n"));
+        return "Your upcoming appointments with Dr. " + doctor.getFullName() + ":\n" + details;
     }
 
     private boolean hasSupportedFileSignature(byte[] bytes, String mimeType) {
