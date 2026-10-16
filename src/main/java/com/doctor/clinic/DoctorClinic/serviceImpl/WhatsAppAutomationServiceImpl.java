@@ -381,8 +381,8 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
             try {
                 var moved = appointmentService.reschedulePatientAppointment(organizationId, patient.getId(), phoneAliases,
                         id, LocalDate.parse(matcher.group(2)), LocalTime.parse(matcher.group(3)));
-                return Optional.of(new AppointmentBookingChatService.Reply("Your appointment has been rescheduled to "
-                        + moved.getAppointmentDate() + " at " + moved.getAppointmentTime() + ". The new appointment is scheduled; please contact the clinic about payment confirmation.", null));
+                return Optional.of(new AppointmentBookingChatService.Reply("Your previous appointment has been cancelled, and your new appointment is scheduled for "
+                        + moved.getAppointmentDate() + " at " + moved.getAppointmentTime() + ". Please contact the clinic about payment confirmation.", null));
             } catch (RuntimeException ex) {
                 log.info("WhatsApp patient reschedule could not complete for appointment {}: {}", id, ex.getMessage());
                 return Optional.of(new AppointmentBookingChatService.Reply("That time is no longer available or this appointment can't be changed. Please start again and choose another time, or contact the clinic.", null));

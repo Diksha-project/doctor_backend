@@ -290,8 +290,10 @@ public class AppointmentServiceImpl implements AppointmentService {
 		replacement.setOriginalAppointmentId(original.getId());
 		replacement.setRescheduledCount(original.getRescheduledCount() == null ? 1 : original.getRescheduledCount() + 1);
 		appointmentRepo.save(replacement);
-		original.setAppointmentStatus("RESCHEDULED");
-		original.setCancellationReason("Rescheduled to " + newDate + " at " + newTime);
+		// Keep the previous booking cancelled in appointment history. The replacement
+		// appointment points back to it through originalAppointmentId.
+		original.setAppointmentStatus("CANCELLED");
+		original.setCancellationReason("Cancelled because it was rescheduled to " + newDate + " at " + newTime);
 		appointmentRepo.save(original);
 		return moved;
 	}
