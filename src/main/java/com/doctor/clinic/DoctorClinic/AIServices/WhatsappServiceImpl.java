@@ -15,11 +15,15 @@ import com.doctor.clinic.DoctorClinic.entity.Doctor;
 @Service
 public class WhatsappServiceImpl {
 
-	@Value("${facebook.graph-version}")
+    @Value("${facebook.graph-version}")
     private String graphVersion;
 
     private final WebClient webClient =
             WebClient.builder().build();
+    // WhatsApp documents may be several megabytes; WebClient's default in-memory limit is 256 KB.
+    private final WebClient mediaDownloadClient = WebClient.builder()
+            .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(15 * 1024 * 1024))
+            .build();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public record DownloadedMedia(byte[] bytes, String mimeType) {}
@@ -45,7 +49,7 @@ public class WhatsappServiceImpl {
             if (fileSize > 14_000_000) {
                 throw new IllegalArgumentException("Attachment exceeds the supported size");
             }
-            byte[] bytes = webClient.get()
+            byte[] bytes = mediaDownloadClient.get()
                     .uri(downloadUrl)
                     .header("Authorization", "Bearer " + accessToken)
                     .retrieve()
