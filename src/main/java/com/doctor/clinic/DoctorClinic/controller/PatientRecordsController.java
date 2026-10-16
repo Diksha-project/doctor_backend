@@ -137,7 +137,7 @@ public class PatientRecordsController {
         if (!sent) throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                 "WhatsApp could not send the reply. Check the WhatsApp connection and retry.");
 
-        chatHistoryService.recordOutbound(patient, doctor, request.getReplyToMessageId(), message);
+        chatHistoryService.recordOutbound(organizationId, patient, doctor, request.getReplyToMessageId(), message);
         return ResponseEntity.ok(java.util.Map.of("success", true, "patientId", patientId,
                 "doctorId", doctor.getId(), "message", "Reply sent"));
     }

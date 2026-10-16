@@ -137,7 +137,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                         CloudflareR2StorageService.StoredFile stored = r2StorageService.storeMedicalReport(
                                 organizationId, patient.getId(), doctor.getId(), reportBytes, reportMimeType, attachmentName);
                         conversationService.attachMedicalReport(organizationId, whatsappMessageId, stored);
-                        patientChatHistoryService.attachMedicalReport(whatsappMessageId, stored);
+                        patientChatHistoryService.attachMedicalReport(organizationId, whatsappMessageId, stored);
                         if (automationEnabled) {
                             String reportPrompt = messageText == null || messageText.isBlank()
                                     ? "Please review the medical report I attached. Explain the visible report content in simple terms."
@@ -149,8 +149,8 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                         }
                     }
                 } catch (Exception e) {
-                    log.warn("Medical report attachment processing failed for orgId={} patientId={} ({})",
-                            organizationId, patientId, e.getClass().getSimpleName());
+                    log.warn("Medical report attachment processing failed for orgId={} patientId={}: {}",
+                            organizationId, patientId, e.getMessage(), e);
                     response = automationEnabled ? "I couldn't securely save or review that file right now. It wasn't saved; please try again later or contact the clinic." : null;
                 }
             } else {

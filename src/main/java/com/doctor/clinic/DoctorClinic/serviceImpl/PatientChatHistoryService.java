@@ -38,7 +38,7 @@ public class PatientChatHistoryService {
     }
 
     @Transactional
-    public void recordInbound(Patient patient, Doctor doctor, String messageId, String type,
+    public void recordInbound(Long organizationId, Patient patient, Doctor doctor, String messageId, String type,
                               String text, String mimeType, String fileName, byte[] attachment) {
         PatientChatMessage message = new PatientChatMessage();
         message.setPatient(patient);
@@ -50,11 +50,11 @@ public class PatientChatHistoryService {
         message.setAttachmentMimeType(mimeType);
         message.setAttachmentName(fileName);
         message.setAttachmentData(attachment);
-        publish(messageRepo.save(message));
+        publish(messageRepo.save(message), organizationId);
     }
 
     @Transactional
-    public void recordOutbound(Patient patient, Doctor doctor, String replyToMessageId, String text) {
+    public void recordOutbound(Long organizationId, Patient patient, Doctor doctor, String replyToMessageId, String text) {
         PatientChatMessage message = new PatientChatMessage();
         message.setPatient(patient);
         message.setDoctor(doctor);
@@ -62,26 +62,26 @@ public class PatientChatHistoryService {
         message.setReplyToMessageId(replyToMessageId);
         message.setMessageType("text");
         message.setMessageText(text);
-        publish(messageRepo.save(message));
+        publish(messageRepo.save(message), organizationId);
     }
 
     @Transactional
-    public void attachMedicalReport(String whatsappMessageId, CloudflareR2StorageService.StoredFile file) {
+    public void attachMedicalReport(Long organizationId, String whatsappMessageId, CloudflareR2StorageService.StoredFile file) {
         if (whatsappMessageId == null || whatsappMessageId.isBlank()) return;
         messageRepo.findByWhatsappMessageId(whatsappMessageId).ifPresent(message -> {
             message.setAttachmentObjectKey(file.objectKey());
             message.setAttachmentMimeType(file.contentType());
             message.setAttachmentName(file.fileName());
             message.setAttachmentData(null);
-            publish(messageRepo.save(message));
+            publish(messageRepo.save(message), organizationId);
         });
     }
 
-    private void publish(PatientChatMessage message) {
+    private void publish(PatientChatMessage message, Long organizationId) {
         Patient patient = message.getPatient();
         Doctor doctor = message.getDoctor();
         eventPublisher.publishEvent(new ChatMessageCommittedEvent(new PatientChatRealtimeMessage(
-                message.getId(), patient.getId(), doctor.getId(), patient.getOrganization().getId(),
+                message.getId(), patient.getId(), doctor.getId(), organizationId,
                 message.getDirection(), message.getMessageType(), message.getMessageText(),
                 message.getAttachmentMimeType(), message.getAttachmentName(),
                 message.getAttachmentData() != null || message.getAttachmentObjectKey() != null, message.getCreatedAt())));

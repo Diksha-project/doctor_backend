@@ -227,7 +227,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
             message.setSentAt(now);
             message.setMetaMessageId(sendResult.providerMessageId());
             patientChatHistoryService.recordOutbound(
-                    conversation.getPatient(), deliveryDoctor, null, content);
+                    conversation.getOrganization().getId(), conversation.getPatient(), deliveryDoctor, null, content);
         } else {
             message.setStatus(MessageStatus.FAILED);
             message.setFailedAt(now);
@@ -712,7 +712,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
         message.setAiGenerated(aiGenerated);
         message.setManual(!aiGenerated);
         message = messageRepo.save(message);
-        patientChatHistoryService.recordOutbound(patient, doctor, null, content);
+        patientChatHistoryService.recordOutbound(organizationId, patient, doctor, null, content);
 
         conversation.setLastMessageAt(LocalDateTime.now());
         conversationRepo.save(conversation);

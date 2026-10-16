@@ -244,7 +244,7 @@ public class WebhookController {
                 text,
                 type);
         patientChatHistoryService.recordInbound(
-                patient, doctor, messageId, type, text, mimeType, attachmentName, null);
+                doctor.getOrganization().getId(), patient, doctor, messageId, type, text, mimeType, attachmentName, null);
 
         whatsappAutomationService.processInboundAsync(
                 doctor.getOrganization().getId(),
