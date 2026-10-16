@@ -80,7 +80,7 @@ public class GeminiServiceLatest {
 
             log.error("Gemini API key is missing");
 
-            return getFallbackResponse(doctor);
+            return getFallbackResponse(doctor, mediaBytes != null);
         }
 
         try {
@@ -252,7 +252,7 @@ public class GeminiServiceLatest {
                         response
                 );
 
-                return getFallbackResponse(doctor);
+                return getFallbackResponse(doctor, mediaBytes != null);
             }
 
             JsonNode firstCandidate =
@@ -276,7 +276,7 @@ public class GeminiServiceLatest {
                         response
                 );
 
-                return getFallbackResponse(doctor);
+                return getFallbackResponse(doctor, mediaBytes != null);
             }
 
             String aiResponse =
@@ -291,7 +291,7 @@ public class GeminiServiceLatest {
                         "Gemini returned empty response"
                 );
 
-                return getFallbackResponse(doctor);
+                return getFallbackResponse(doctor, mediaBytes != null);
             }
 
             /*
@@ -328,7 +328,7 @@ public class GeminiServiceLatest {
                     e.getResponseBodyAsString()
             );
 
-            return getFallbackResponse(doctor);
+            return getFallbackResponse(doctor, mediaBytes != null);
 
         } catch (Exception e) {
 
@@ -353,7 +353,7 @@ public class GeminiServiceLatest {
                     e
             );
 
-            return getFallbackResponse(doctor);
+            return getFallbackResponse(doctor, mediaBytes != null);
         }
     }
 
@@ -381,8 +381,8 @@ public class GeminiServiceLatest {
                     .path("content").path("parts").path(0).path("text");
             return "MEDICAL_REPORT".equalsIgnoreCase(firstPart.asText().trim());
         } catch (Exception e) {
-            log.warn("Could not validate incoming attachment as a medical report: {}", e.getClass().getSimpleName());
-            return false;
+            log.warn("Medical-report classification request failed: {}", e.getMessage(), e);
+            throw new IllegalStateException("Medical-report classification service failed", e);
         }
     }
 
@@ -629,5 +629,12 @@ public class GeminiServiceLatest {
 
                 doctor.getConsultationFee()
         );
+    }
+
+    private String getFallbackResponse(Doctor doctor, boolean hasAttachment) {
+        if (hasAttachment) {
+            return "I received and saved your medical report, but couldn't review it just now. A doctor can review it from your patient record. Please try again later if you need an explanation.";
+        }
+        return getFallbackResponse(doctor);
     }
 }

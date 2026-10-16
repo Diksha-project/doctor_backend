@@ -129,13 +129,18 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                     WhatsappServiceImpl.DownloadedMedia downloaded = whatsappService.downloadMedia(mediaId, doctor.getWhatsappAccessToken());
                     reportBytes = downloaded.bytes();
                     reportMimeType = downloaded.mimeType();
+                    log.info("Downloaded WhatsApp attachment: orgId={} type={} mimeType={} bytes={}",
+                            organizationId, messageType, reportMimeType, reportBytes.length);
                     if (!hasSupportedFileSignature(reportBytes, reportMimeType)) {
                         response = automationEnabled ? "I can save medical reports sent as a PDF or a clear JPEG, PNG, or WebP image. This file type or file content isn't supported, so it wasn't saved." : null;
                     } else if (!geminiServiceLatest.isValidMedicalReport(reportBytes, reportMimeType)) {
+                        log.info("Attachment classified as not a medical report: orgId={} mimeType={}", organizationId, reportMimeType);
                         response = automationEnabled ? "I couldn't verify this file as a medical report, so it wasn't saved. Please send a clear image or PDF of a lab result, scan, prescription, discharge summary, or similar medical document." : null;
                     } else {
+                        log.info("Attachment classified as a medical report: orgId={} mimeType={}", organizationId, reportMimeType);
                         CloudflareR2StorageService.StoredFile stored = r2StorageService.storeMedicalReport(
                                 organizationId, patient.getId(), doctor.getId(), reportBytes, reportMimeType, attachmentName);
+                        log.info("Medical report stored in R2: orgId={} bytes={}", organizationId, stored.size());
                         conversationService.attachMedicalReport(organizationId, whatsappMessageId, stored);
                         patientChatHistoryService.attachMedicalReport(organizationId, whatsappMessageId, stored);
                         if (automationEnabled) {
