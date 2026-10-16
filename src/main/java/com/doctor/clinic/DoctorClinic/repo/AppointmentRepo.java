@@ -12,9 +12,19 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Collection;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 
 @Repository
 public interface AppointmentRepo extends JpaRepository<Appointment, Long> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT a FROM Appointment a LEFT JOIN a.patient p WHERE a.id = :appointmentId "
+            + "AND a.organization.id = :organizationId AND (p.id = :patientId OR a.patientPhone IN :phoneAliases)")
+    java.util.Optional<Appointment> findForPatientAction(@Param("appointmentId") Long appointmentId,
+                                                         @Param("organizationId") Long organizationId,
+                                                         @Param("patientId") Long patientId,
+                                                         @Param("phoneAliases") Collection<String> phoneAliases);
 
     @Query("SELECT a FROM Appointment a LEFT JOIN a.patient p WHERE a.organization.id = :organizationId "
             + "AND (p.id = :patientId OR a.patientPhone IN :phoneAliases) "

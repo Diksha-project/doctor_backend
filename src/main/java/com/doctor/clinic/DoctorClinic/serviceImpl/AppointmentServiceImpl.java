@@ -5,6 +5,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Comparator;
+import java.util.Collection;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -235,6 +237,90 @@ public class AppointmentServiceImpl implements AppointmentService {
 		appointmentRepo.save(appointment);
 
 		log.info("Appointment cancelled. ID: {}, Reason: {}", appointmentId, reason);
+	}
+
+	@Override
+	@Transactional
+	public void cancelPatientAppointment(Long organizationId, Long patientId, Collection<String> phoneAliases,
+			Long appointmentId, String reason) {
+		Appointment appointment = appointmentRepo.findForPatientAction(appointmentId, organizationId, patientId, phoneAliases)
+				.orElseThrow(() -> new RuntimeException("Upcoming appointment not found"));
+		validatePatientCanChange(appointment);
+		cancelAppointment(appointmentId, reason == null || reason.isBlank() ? "Cancelled by patient via WhatsApp" : reason);
+	}
+
+	@Override
+	@Transactional
+	public BookAppointmentResponse reschedulePatientAppointment(Long organizationId, Long patientId,
+			Collection<String> phoneAliases, Long appointmentId, LocalDate newDate, LocalTime newTime) {
+		Appointment original = appointmentRepo.findForPatientAction(appointmentId, organizationId, patientId, phoneAliases)
+				.orElseThrow(() -> new RuntimeException("Upcoming appointment not found"));
+		validatePatientCanChange(original);
+		if (newDate == null || newTime == null || (original.getAppointmentDate().equals(newDate)
+				&& original.getAppointmentTime().equals(newTime))) {
+			throw new RuntimeException("Choose a different available appointment time");
+		}
+
+		// Release the existing slot before booking so daily limits and availability are evaluated correctly.
+		releaseAppointmentSlot(original);
+		original.setAppointmentStatus("CANCELLED");
+		original.setCancelledBy("PATIENT");
+		original.setCancelledAt(LocalDateTime.now());
+		original.setCancellationReason("Rescheduling in progress");
+		appointmentRepo.saveAndFlush(original);
+
+		BookAppointmentRequest request = new BookAppointmentRequest();
+		request.setDoctorId(original.getDoctor().getId());
+		request.setPatientName(original.getPatientName());
+		request.setPatientPhone(original.getPatientPhone());
+		request.setPatientEmail(original.getPatientEmail());
+		request.setPatientAge(original.getPatientAge());
+		request.setPatientGender(original.getPatientGender());
+		request.setAppointmentDate(newDate);
+		request.setAppointmentTime(newTime);
+		request.setAppointmentType(original.getAppointmentType());
+		request.setReasonForVisit(original.getReasonForVisit());
+		request.setSymptoms(original.getSymptoms());
+		request.setPaymentMethod(original.getPaymentMethod() == null ? "CASH" : original.getPaymentMethod());
+		request.setBookedVia("WHATSAPP");
+		BookAppointmentResponse moved = bookAppointment(request);
+
+		Appointment replacement = appointmentRepo.findById(moved.getAppointmentId())
+				.orElseThrow(() -> new RuntimeException("Rescheduled appointment could not be loaded"));
+		replacement.setOriginalAppointmentId(original.getId());
+		replacement.setRescheduledCount(original.getRescheduledCount() == null ? 1 : original.getRescheduledCount() + 1);
+		appointmentRepo.save(replacement);
+		original.setAppointmentStatus("RESCHEDULED");
+		original.setCancellationReason("Rescheduled to " + newDate + " at " + newTime);
+		appointmentRepo.save(original);
+		return moved;
+	}
+
+	private void validatePatientCanChange(Appointment appointment) {
+		String status = appointment.getAppointmentStatus();
+		if (!("SCHEDULED".equalsIgnoreCase(status) || "CONFIRMED".equalsIgnoreCase(status))) {
+			throw new RuntimeException("Only scheduled or confirmed appointments can be changed");
+		}
+		LocalDate today = LocalDate.now();
+		if (appointment.getAppointmentDate().isBefore(today)
+				|| (appointment.getAppointmentDate().equals(today)
+				&& !appointment.getAppointmentTime().isAfter(LocalTime.now()))) {
+			throw new RuntimeException("This appointment has already started or passed");
+		}
+	}
+
+	private void releaseAppointmentSlot(Appointment appointment) {
+		doctorSlotRepo.findByDoctorIdAndSlotDateAndStartTime(appointment.getDoctor().getId(),
+				appointment.getAppointmentDate(), appointment.getAppointmentTime()).ifPresent(slot -> {
+			if (slot.getBookedCount() != null && slot.getBookedCount() > 0) {
+				slot.setBookedCount(slot.getBookedCount() - 1);
+			}
+			if (slot.getBookedCount() == null || slot.getBookedCount() == 0) {
+				slot.setAvailable(true);
+				slot.setSlotType("REGULAR");
+			}
+			doctorSlotRepo.save(slot);
+		});
 	}
 
 	// Helper method to check overlapping appointments

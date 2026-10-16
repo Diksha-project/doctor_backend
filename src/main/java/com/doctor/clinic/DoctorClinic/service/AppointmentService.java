@@ -2,6 +2,8 @@ package com.doctor.clinic.DoctorClinic.service;
 
 import java.time.LocalDate;
 import java.util.Map;
+import java.util.Collection;
+import java.time.LocalTime;
 
 import com.doctor.clinic.DoctorClinic.request.BookAppointmentRequest;
 import com.doctor.clinic.DoctorClinic.request.UpdateStatusRequest;
@@ -17,6 +19,13 @@ public interface AppointmentService {
 
 	BookAppointmentResponse confirmPayment(Long appointmentId, String paymentId);
 
+	void cancelPatientAppointment(Long organizationId, Long patientId, Collection<String> phoneAliases,
+	                              Long appointmentId, String reason);
+
+	BookAppointmentResponse reschedulePatientAppointment(Long organizationId, Long patientId,
+	                              Collection<String> phoneAliases, Long appointmentId,
+	                              LocalDate newDate, LocalTime newTime);
+
 
     Map<String, Object> updateAppointmentStatus(UpdateStatusRequest request);
 
@@ -26,4 +35,3 @@ public interface AppointmentService {
 			String status);
 
 }
-
