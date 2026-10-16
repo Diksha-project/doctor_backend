@@ -41,6 +41,7 @@ import com.doctor.clinic.DoctorClinic.response.PatientHistoryResponse;
 import com.doctor.clinic.DoctorClinic.response.PatientHistoryResponse.AppointmentRecord;
 import com.doctor.clinic.DoctorClinic.response.PatientHistoryResponse.ChatRecord;
 import com.doctor.clinic.DoctorClinic.response.PatientHistoryResponse.PatientProfile;
+import com.doctor.clinic.DoctorClinic.response.PatientHistoryResponse.MedicalReportRecord;
 import com.doctor.clinic.DoctorClinic.serviceImpl.PatientProfileService;
 
 @RestController
@@ -94,6 +95,19 @@ public class PatientRecordsController {
                                 : null)).toList();
 
         return new PatientHistoryResponse(toProfile(patient), appointments, conversations);
+    }
+
+    @GetMapping("/{patientId}/reports")
+    public List<MedicalReportRecord> patientMedicalReports(@PathVariable Long patientId) {
+        Long organizationId = organizationId();
+        patientRepo.findByIdAndOrganizationId(patientId, organizationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found"));
+
+        return chatMessageRepo.findMedicalReportsForPatient(patientId, organizationId).stream()
+                .map(report -> new MedicalReportRecord(report.getMessageId(), report.getDoctorId(),
+                        report.getDoctorName(), report.getFileName(), report.getMimeType(), report.getUploadedAt(),
+                        "/api/patients/" + patientId + "/messages/" + report.getMessageId() + "/attachment"))
+                .toList();
     }
 
     @GetMapping("/{patientId}/messages")

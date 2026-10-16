@@ -30,6 +30,15 @@ public interface PatientChatMessageRepo extends JpaRepository<PatientChatMessage
         Boolean getHasAttachment();
     }
 
+    interface MedicalReportRow {
+        Long getMessageId();
+        Long getDoctorId();
+        String getDoctorName();
+        String getFileName();
+        String getMimeType();
+        java.time.LocalDateTime getUploadedAt();
+    }
+
     List<HistoryRow> findByPatientIdOrderByCreatedAtDesc(Long patientId, Pageable pageable);
 
     org.springframework.data.domain.Page<PatientChatMessage> findAllByOrderByIdAsc(Pageable pageable);
@@ -75,4 +84,14 @@ public interface PatientChatMessageRepo extends JpaRepository<PatientChatMessage
     Optional<PatientChatMessage> findAttachmentForOrganization(@Param("messageId") Long messageId,
                                                                @Param("patientId") Long patientId,
                                                                @Param("organizationId") Long organizationId);
+
+    @Query("select m.id as messageId, d.id as doctorId, "
+            + "concat(d.firstName, ' ', d.lastName) as doctorName, "
+            + "m.attachmentName as fileName, m.attachmentMimeType as mimeType, m.createdAt as uploadedAt "
+            + "from PatientChatMessage m join m.doctor d "
+            + "where m.patient.id = :patientId and m.patient.organization.id = :organizationId "
+            + "and d.organization.id = :organizationId and m.attachmentObjectKey is not null "
+            + "order by m.createdAt desc")
+    List<MedicalReportRow> findMedicalReportsForPatient(@Param("patientId") Long patientId,
+                                                        @Param("organizationId") Long organizationId);
 }

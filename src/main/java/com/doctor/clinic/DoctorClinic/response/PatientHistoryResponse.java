@@ -21,4 +21,8 @@ public record PatientHistoryResponse(
     public record ChatRecord(Long id, String direction, String type, String text,
                              String attachmentMimeType, String attachmentName,
                              Boolean hasAttachment, LocalDateTime createdAt, String attachmentUrl) {}
+
+    public record MedicalReportRecord(Long messageId, Long doctorId, String doctorName,
+                                      String fileName, String mimeType, LocalDateTime uploadedAt,
+                                      String downloadUrl) {}
 }

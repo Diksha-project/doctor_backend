@@ -213,7 +213,10 @@ public class AppointmentServiceImpl implements AppointmentService {
 	public void cancelAppointment(Long appointmentId, String reason) {
 		Appointment appointment = appointmentRepo.findById(appointmentId)
 				.orElseThrow(() -> new RuntimeException("Appointment not found"));
+		cancelAppointmentRecord(appointment, reason);
+	}
 
+	private void cancelAppointmentRecord(Appointment appointment, String reason) {
 		// Release the slot
 		DoctorSlot slot = doctorSlotRepo.findByDoctorIdAndSlotDateAndStartTime(appointment.getDoctor().getId(),
 				appointment.getAppointmentDate(), appointment.getAppointmentTime()).orElse(null);
@@ -236,7 +239,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 
 		appointmentRepo.save(appointment);
 
-		log.info("Appointment cancelled. ID: {}, Reason: {}", appointmentId, reason);
+		log.info("Appointment cancelled. ID: {}, Reason: {}", appointment.getId(), reason);
 	}
 
 	@Override
@@ -246,7 +249,8 @@ public class AppointmentServiceImpl implements AppointmentService {
 		Appointment appointment = appointmentRepo.findForPatientAction(appointmentId, organizationId, patientId, phoneAliases)
 				.orElseThrow(() -> new RuntimeException("Upcoming appointment not found"));
 		validatePatientCanChange(appointment);
-		cancelAppointment(appointmentId, reason == null || reason.isBlank() ? "Cancelled by patient via WhatsApp" : reason);
+		cancelAppointmentRecord(appointment, reason == null || reason.isBlank()
+				? "Cancelled by patient via WhatsApp" : reason);
 	}
 
 	@Override
