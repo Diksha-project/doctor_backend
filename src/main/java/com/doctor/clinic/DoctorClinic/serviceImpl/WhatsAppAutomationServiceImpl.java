@@ -346,10 +346,20 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
             Long id = parseAppointmentId(selected.substring("APPT_CANCEL_SELECT_".length()));
             Appointment appointment = findUpcomingAppointment(id, organizationId, patient, doctor, phoneAliases);
             if (appointment == null) return Optional.of(new AppointmentBookingChatService.Reply("I couldn't find that upcoming appointment. Please choose an appointment again.", null));
-            String body = "Do you want to cancel your appointment with Dr. " + doctor.getFullName() + " on "
-                    + appointment.getAppointmentDate() + " at " + appointment.getAppointmentTime() + "?";
-            return Optional.of(new AppointmentBookingChatService.Reply(body, appointmentButtons(body,
-                    button("APPT_CANCEL_CONFIRM_" + id, "Confirm cancel"), button("APPT_CANCEL_ABORT", "Keep appointment"))));
+            try {
+                appointmentService.cancelPatientAppointment(organizationId, patient.getId(), phoneAliases, id,
+                        "Cancelled by patient via WhatsApp");
+                log.info("WhatsApp appointment cancelled after patient selected it: orgId={} appointmentId={}",
+                        organizationId, id);
+                return Optional.of(new AppointmentBookingChatService.Reply("Your appointment with Dr. "
+                        + doctor.getFullName() + " on " + appointment.getAppointmentDate() + " at "
+                        + appointment.getAppointmentTime() + " has been cancelled.", null));
+            } catch (RuntimeException ex) {
+                log.warn("WhatsApp patient cancellation failed: orgId={} appointmentId={} reason={}",
+                        organizationId, id, ex.getMessage());
+                return Optional.of(new AppointmentBookingChatService.Reply("I couldn't cancel that appointment. "
+                        + "It may have already started or changed. Please contact the clinic for help.", null));
+            }
         }
         if (selected.startsWith("APPT_CANCEL_CONFIRM_")) {
             Long id = parseAppointmentId(selected.substring("APPT_CANCEL_CONFIRM_".length()));
