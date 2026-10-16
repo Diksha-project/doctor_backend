@@ -10,6 +10,7 @@ import com.doctor.clinic.DoctorClinic.AIServices.WhatsappServiceImpl;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
 import com.doctor.clinic.DoctorClinic.request.SendPatientChatReplyRequest;
 import com.doctor.clinic.DoctorClinic.serviceImpl.PatientChatHistoryService;
+import com.doctor.clinic.DoctorClinic.serviceImpl.CloudflareR2StorageService;
 
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -52,16 +53,19 @@ public class PatientRecordsController {
     private final DoctorRepo doctorRepo;
     private final WhatsappServiceImpl whatsappService;
     private final PatientChatHistoryService chatHistoryService;
+    private final CloudflareR2StorageService r2StorageService;
 
     public PatientRecordsController(PatientRepo patientRepo, AppointmentRepo appointmentRepo,
                                     PatientChatMessageRepo chatMessageRepo, DoctorRepo doctorRepo,
-                                    WhatsappServiceImpl whatsappService, PatientChatHistoryService chatHistoryService) {
+                                    WhatsappServiceImpl whatsappService, PatientChatHistoryService chatHistoryService,
+                                    CloudflareR2StorageService r2StorageService) {
         this.patientRepo = patientRepo;
         this.appointmentRepo = appointmentRepo;
         this.chatMessageRepo = chatMessageRepo;
         this.doctorRepo = doctorRepo;
         this.whatsappService = whatsappService;
         this.chatHistoryService = chatHistoryService;
+        this.r2StorageService = r2StorageService;
     }
 
     @GetMapping
@@ -143,6 +147,16 @@ public class PatientRecordsController {
         PatientChatMessage message = chatMessageRepo
                 .findAttachmentForOrganization(messageId, patientId, organizationId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Attachment not found"));
+        if (message.getAttachmentObjectKey() != null) {
+            CloudflareR2StorageService.FileContent file = r2StorageService.read(message.getAttachmentObjectKey(),
+                    message.getAttachmentMimeType(), message.getAttachmentName());
+            MediaType fileMediaType = safeMediaType(file.contentType());
+            String storedFileName = safeFileName(file.fileName());
+            return ResponseEntity.ok().contentType(fileMediaType)
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            ContentDisposition.inline().filename(storedFileName).build().toString())
+                    .body(file.bytes());
+        }
         if (message.getAttachmentData() == null || message.getAttachmentData().length == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Attachment not found");
         }
@@ -162,6 +176,19 @@ public class PatientRecordsController {
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         ContentDisposition.attachment().filename(fileName).build().toString())
                 .body(message.getAttachmentData());
+    }
+
+    private MediaType safeMediaType(String mimeType) {
+        try {
+            return mimeType == null ? MediaType.APPLICATION_OCTET_STREAM : MediaType.parseMediaType(mimeType);
+        } catch (IllegalArgumentException ex) {
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
+    }
+
+    private String safeFileName(String fileName) {
+        return fileName == null || fileName.isBlank() ? "medical-report"
+                : fileName.replaceAll("[\\r\\n\\\"]", "_");
     }
 
     private Long organizationId() {

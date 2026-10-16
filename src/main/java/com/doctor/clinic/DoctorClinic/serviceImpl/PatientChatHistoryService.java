@@ -65,6 +65,18 @@ public class PatientChatHistoryService {
         publish(messageRepo.save(message));
     }
 
+    @Transactional
+    public void attachMedicalReport(String whatsappMessageId, CloudflareR2StorageService.StoredFile file) {
+        if (whatsappMessageId == null || whatsappMessageId.isBlank()) return;
+        messageRepo.findByWhatsappMessageId(whatsappMessageId).ifPresent(message -> {
+            message.setAttachmentObjectKey(file.objectKey());
+            message.setAttachmentMimeType(file.contentType());
+            message.setAttachmentName(file.fileName());
+            message.setAttachmentData(null);
+            publish(messageRepo.save(message));
+        });
+    }
+
     private void publish(PatientChatMessage message) {
         Patient patient = message.getPatient();
         Doctor doctor = message.getDoctor();
@@ -72,6 +84,6 @@ public class PatientChatHistoryService {
                 message.getId(), patient.getId(), doctor.getId(), patient.getOrganization().getId(),
                 message.getDirection(), message.getMessageType(), message.getMessageText(),
                 message.getAttachmentMimeType(), message.getAttachmentName(),
-                message.getAttachmentData() != null, message.getCreatedAt())));
+                message.getAttachmentData() != null || message.getAttachmentObjectKey() != null, message.getCreatedAt())));
     }
 }

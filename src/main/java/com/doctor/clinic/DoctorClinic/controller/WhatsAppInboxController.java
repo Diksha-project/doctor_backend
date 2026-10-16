@@ -4,6 +4,9 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ContentDisposition;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,6 +48,24 @@ public class WhatsAppInboxController {
     public ResponseEntity<List<Map<String, Object>>> getMessages(@PathVariable Long conversationId) {
         authorizationService.requirePermission(PermissionCode.WHATSAPP_INBOX_VIEW);
         return ResponseEntity.ok(conversationService.getMessagesForConversation(conversationId, currentOrganizationId()));
+    }
+
+    @GetMapping("/conversations/{conversationId}/messages/{messageId}/attachment")
+    public ResponseEntity<byte[]> getMedicalReport(@PathVariable Long conversationId,
+                                                   @PathVariable Long messageId) {
+        authorizationService.requirePermission(PermissionCode.WHATSAPP_INBOX_VIEW);
+        var file = conversationService.downloadMedicalReport(conversationId, messageId, currentOrganizationId());
+        MediaType mediaType;
+        try {
+            mediaType = MediaType.parseMediaType(file.contentType());
+        } catch (Exception ex) {
+            mediaType = MediaType.APPLICATION_OCTET_STREAM;
+        }
+        String fileName = file.fileName() == null ? "medical-report" : file.fileName().replaceAll("[\\r\\n\\\"]", "_");
+        return ResponseEntity.ok().contentType(mediaType)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.inline().filename(fileName).build().toString())
+                .body(file.bytes());
     }
 
     @PostMapping("/conversations/{conversationId}/messages")

@@ -357,6 +357,35 @@ public class GeminiServiceLatest {
         }
     }
 
+    /** Returns true only when the attached file is clearly a medical report or clinical record. */
+    public boolean isValidMedicalReport(byte[] mediaBytes, String mimeType) {
+        if (apiKey == null || apiKey.isBlank() || mediaBytes == null || mediaBytes.length == 0
+                || mimeType == null) return false;
+        try {
+            String instruction = "Classify the attached file for secure storage in a patient's medical record. "
+                    + "Return exactly MEDICAL_REPORT only if this is clearly a genuine clinical document such as a lab/test result, "
+                    + "radiology or diagnostic report, prescription, discharge summary, vaccination record, or similar medical report. "
+                    + "Return NOT_MEDICAL_REPORT for unrelated images/documents, selfies, ordinary photos, IDs, receipts, blank or unreadable files, "
+                    + "or anything uncertain. Do not infer or explain medical information. Output only one of those two labels.";
+            List<Map<String, Object>> parts = new ArrayList<>();
+            parts.add(Map.of("text", instruction));
+            parts.add(Map.of("inline_data", Map.of("mime_type", mimeType,
+                    "data", Base64.getEncoder().encodeToString(mediaBytes))));
+            Map<String, Object> requestBody = Map.of("contents", List.of(Map.of("role", "user", "parts", parts)));
+            String response = webClient.post().uri(GEMINI_URL)
+                    .header("Content-Type", "application/json")
+                    .header("x-goog-api-key", apiKey)
+                    .bodyValue(requestBody)
+                    .retrieve().bodyToMono(String.class).block();
+            JsonNode firstPart = objectMapper.readTree(response).path("candidates").path(0)
+                    .path("content").path("parts").path(0).path("text");
+            return "MEDICAL_REPORT".equalsIgnoreCase(firstPart.asText().trim());
+        } catch (Exception e) {
+            log.warn("Could not validate incoming attachment as a medical report: {}", e.getClass().getSimpleName());
+            return false;
+        }
+    }
+
     /**
      * ============================================================
      * DOCTOR CONTEXT

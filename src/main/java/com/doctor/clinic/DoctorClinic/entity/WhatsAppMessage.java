@@ -75,6 +75,21 @@ public class WhatsAppMessage {
     @Column(name = "content", columnDefinition = "TEXT")
     private String content;
 
+    @Column(name = "attachment_object_key", length = 1024)
+    private String attachmentObjectKey;
+
+    @Column(name = "attachment_mime_type", length = 128)
+    private String attachmentMimeType;
+
+    @Column(name = "attachment_file_name", length = 255)
+    private String attachmentFileName;
+
+    @Column(name = "attachment_size")
+    private Long attachmentSize;
+
+    @Column(name = "medical_report", nullable = false)
+    private boolean medicalReport = false;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private MessageStatus status = MessageStatus.RECEIVED;

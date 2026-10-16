@@ -16,4 +16,10 @@ public interface WhatsAppConversationService {
 
     Map<String, Object> sendAttachment(Long conversationId, Long organizationId,
                                        org.springframework.web.multipart.MultipartFile file, String caption);
+
+    void attachMedicalReport(Long organizationId, String metaMessageId,
+                             com.doctor.clinic.DoctorClinic.serviceImpl.CloudflareR2StorageService.StoredFile file);
+
+    com.doctor.clinic.DoctorClinic.serviceImpl.CloudflareR2StorageService.FileContent downloadMedicalReport(
+            Long conversationId, Long messageId, Long organizationId);
 }

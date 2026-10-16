@@ -61,6 +61,9 @@ public class PatientChatMessage {
     @Column(name = "attachment_data", columnDefinition = "bytea")
     private byte[] attachmentData;
 
+    @Column(name = "attachment_object_key", length = 1024)
+    private String attachmentObjectKey;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 }

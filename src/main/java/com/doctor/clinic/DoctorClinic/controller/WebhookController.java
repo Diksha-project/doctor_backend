@@ -250,6 +250,7 @@ public class WebhookController {
                 doctor.getOrganization().getId(),
                 doctor.getId(),
                 patient.getId(),
+                messageId,
                 fromNumber,
                 text,
                 type,

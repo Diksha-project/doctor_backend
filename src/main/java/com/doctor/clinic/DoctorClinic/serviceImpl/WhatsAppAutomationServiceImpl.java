@@ -44,6 +44,8 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
     private final BookingRequestService bookingRequestService;
     private final AppointmentOverflowService appointmentOverflowService;
     private final ClinicMessageScopeDetector clinicMessageScopeDetector;
+    private final CloudflareR2StorageService r2StorageService;
+    private final PatientChatHistoryService patientChatHistoryService;
 
     public WhatsAppAutomationServiceImpl(DoctorRepo doctorRepo,
                                         PatientRepo patientRepo,
@@ -56,7 +58,9 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                                         WhatsAppConversationServiceImpl conversationService,
                                         BookingRequestService bookingRequestService,
                                         AppointmentOverflowService appointmentOverflowService,
-                                        ClinicMessageScopeDetector clinicMessageScopeDetector) {
+                                        ClinicMessageScopeDetector clinicMessageScopeDetector,
+                                        CloudflareR2StorageService r2StorageService,
+                                        PatientChatHistoryService patientChatHistoryService) {
         this.doctorRepo = doctorRepo;
         this.patientRepo = patientRepo;
         this.conversationRepo = conversationRepo;
@@ -69,11 +73,13 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
         this.bookingRequestService = bookingRequestService;
         this.appointmentOverflowService = appointmentOverflowService;
         this.clinicMessageScopeDetector = clinicMessageScopeDetector;
+        this.r2StorageService = r2StorageService;
+        this.patientChatHistoryService = patientChatHistoryService;
     }
 
     @Override
     @Async("whatsappTaskExecutor")
-    public void processInboundAsync(Long organizationId, Long doctorId, Long patientId, String phoneNumber,
+    public void processInboundAsync(Long organizationId, Long doctorId, Long patientId, String whatsappMessageId, String phoneNumber,
                                    String messageText, String messageType, String mediaId, String mimeType, String attachmentName,
                                    String selectionId) {
         try {
@@ -105,15 +111,52 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                 conversation = conversationService.reopenConversation(conversation.getId(), organizationId);
             }
 
-            if (conversation.getStatus() == ConversationStatus.CLOSED
-                    || !conversation.isAiEnabled() || conversation.isHumanTakeover()) {
+            boolean automationEnabled = conversation.getStatus() != ConversationStatus.CLOSED
+                    && conversation.isAiEnabled() && !conversation.isHumanTakeover();
+            boolean reportCandidate = mediaId != null
+                    && ("image".equalsIgnoreCase(messageType) || "document".equalsIgnoreCase(messageType));
+            if (!automationEnabled && !reportCandidate) {
                 log.info("Automation disabled for conversation {} with status {}", conversation.getId(), conversation.getStatus());
                 return;
             }
 
             Map<String, Object> interactive = new HashMap<>();
-            String response = resolveResponse(doctor, patient, conversation, messageText, messageType, mediaId, mimeType, attachmentName,
-                    selectionId, interactive);
+            String response;
+            byte[] reportBytes = null;
+            String reportMimeType = null;
+            if (mediaId != null && ("image".equalsIgnoreCase(messageType) || "document".equalsIgnoreCase(messageType))) {
+                try {
+                    WhatsappServiceImpl.DownloadedMedia downloaded = whatsappService.downloadMedia(mediaId, doctor.getWhatsappAccessToken());
+                    reportBytes = downloaded.bytes();
+                    reportMimeType = downloaded.mimeType();
+                    if (!hasSupportedFileSignature(reportBytes, reportMimeType)) {
+                        response = automationEnabled ? "I can save medical reports sent as a PDF or a clear JPEG, PNG, or WebP image. This file type or file content isn't supported, so it wasn't saved." : null;
+                    } else if (!geminiServiceLatest.isValidMedicalReport(reportBytes, reportMimeType)) {
+                        response = automationEnabled ? "I couldn't verify this file as a medical report, so it wasn't saved. Please send a clear image or PDF of a lab result, scan, prescription, discharge summary, or similar medical document." : null;
+                    } else {
+                        CloudflareR2StorageService.StoredFile stored = r2StorageService.storeMedicalReport(
+                                organizationId, patient.getId(), doctor.getId(), reportBytes, reportMimeType, attachmentName);
+                        conversationService.attachMedicalReport(organizationId, whatsappMessageId, stored);
+                        patientChatHistoryService.attachMedicalReport(whatsappMessageId, stored);
+                        if (automationEnabled) {
+                            String reportPrompt = messageText == null || messageText.isBlank()
+                                    ? "Please review the medical report I attached. Explain the visible report content in simple terms."
+                                    : messageText;
+                            response = resolveResponse(doctor, patient, conversation, reportPrompt, messageType,
+                                    null, reportMimeType, attachmentName, selectionId, interactive, reportBytes, reportMimeType);
+                        } else {
+                            response = null;
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Medical report attachment processing failed for orgId={} patientId={} ({})",
+                            organizationId, patientId, e.getClass().getSimpleName());
+                    response = automationEnabled ? "I couldn't securely save or review that file right now. It wasn't saved; please try again later or contact the clinic." : null;
+                }
+            } else {
+                response = resolveResponse(doctor, patient, conversation, messageText, messageType, mediaId, mimeType,
+                        attachmentName, selectionId, interactive, null, null);
+            }
             if (response == null || response.isBlank()) {
                 log.info("No outbound response generated for conversation {}", conversation.getId());
                 return;
@@ -143,7 +186,8 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
 
     private String resolveResponse(Doctor doctor, Patient patient, WhatsAppConversation conversation, String messageText,
                                   String messageType, String mediaId, String mimeType, String attachmentName,
-                                  String selectionId, Map<String, Object> interactiveOut) {
+                                  String selectionId, Map<String, Object> interactiveOut,
+                                  byte[] mediaBytes, String mediaContentType) {
         String normalized = normalize(messageText);
         if (normalized == null || normalized.isBlank()) {
             return null;
@@ -200,7 +244,24 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
         }
 
         String recentHistory = "";
-        return geminiServiceLatest.generateResponse(normalized, doctor, recentHistory, null, null);
+        return geminiServiceLatest.generateResponse(normalized, doctor, recentHistory, mediaBytes, mediaContentType);
+    }
+
+    private boolean hasSupportedFileSignature(byte[] bytes, String mimeType) {
+        if (bytes == null || bytes.length < 4 || mimeType == null) return false;
+        return switch (mimeType.toLowerCase(Locale.ROOT)) {
+            case "application/pdf" -> bytes.length >= 5 && bytes[0] == '%'
+                    && bytes[1] == 'P' && bytes[2] == 'D' && bytes[3] == 'F' && bytes[4] == '-';
+            case "image/jpeg" -> bytes.length >= 3 && (bytes[0] & 0xff) == 0xff
+                    && (bytes[1] & 0xff) == 0xd8 && (bytes[2] & 0xff) == 0xff;
+            case "image/png" -> bytes.length >= 8 && (bytes[0] & 0xff) == 0x89 && bytes[1] == 'P'
+                    && bytes[2] == 'N' && bytes[3] == 'G' && bytes[4] == 0x0d && bytes[5] == 0x0a
+                    && bytes[6] == 0x1a && bytes[7] == 0x0a;
+            case "image/webp" -> bytes.length >= 12 && bytes[0] == 'R' && bytes[1] == 'I'
+                    && bytes[2] == 'F' && bytes[3] == 'F' && bytes[8] == 'W' && bytes[9] == 'E'
+                    && bytes[10] == 'B' && bytes[11] == 'P';
+            default -> false;
+        };
     }
 
     private WhatsAppResponseRule findMatchingRule(Doctor doctor, Organization organization, String normalized) {

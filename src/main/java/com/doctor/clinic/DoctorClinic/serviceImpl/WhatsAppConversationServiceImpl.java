@@ -50,6 +50,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
     private final WhatsAppRealtimeService realtimeService;
     private final PatientChatHistoryService patientChatHistoryService;
     private final CurrentUserService currentUserService;
+    private final CloudflareR2StorageService r2StorageService;
 
     public WhatsAppConversationServiceImpl(WhatsAppConversationRepo conversationRepo,
                                           WhatsAppMessageRepo messageRepo,
@@ -58,7 +59,8 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
                                           WhatsappServiceImpl whatsappService,
                                           WhatsAppRealtimeService realtimeService,
                                           PatientChatHistoryService patientChatHistoryService,
-                                          CurrentUserService currentUserService) {
+                                          CurrentUserService currentUserService,
+                                          CloudflareR2StorageService r2StorageService) {
         this.conversationRepo = conversationRepo;
         this.messageRepo = messageRepo;
         this.doctorRepo = doctorRepo;
@@ -67,6 +69,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
         this.realtimeService = realtimeService;
         this.patientChatHistoryService = patientChatHistoryService;
         this.currentUserService = currentUserService;
+        this.r2StorageService = r2StorageService;
     }
 
     @Override
@@ -115,6 +118,12 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
             map.put("senderType", message.getSenderType().name());
             map.put("messageType", message.getMessageType().name());
             map.put("content", message.getContent());
+            map.put("medicalReport", message.isMedicalReport());
+            map.put("attachmentMimeType", message.getAttachmentMimeType());
+            map.put("attachmentFileName", message.getAttachmentFileName());
+            map.put("attachmentSize", message.getAttachmentSize());
+            map.put("attachmentUrl", message.getAttachmentObjectKey() == null ? null
+                    : "/api/whatsapp/conversations/" + conversationId + "/messages/" + message.getId() + "/attachment");
             map.put("status", message.getStatus().name());
             map.put("aiGenerated", message.isAiGenerated());
             map.put("manual", message.isManual());
@@ -245,6 +254,13 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
         event.put("senderType", message.getSenderType().name());
         event.put("messageType", message.getMessageType().name());
         event.put("content", message.getContent());
+        event.put("medicalReport", message.isMedicalReport());
+        event.put("attachmentMimeType", message.getAttachmentMimeType());
+        event.put("attachmentFileName", message.getAttachmentFileName());
+        event.put("attachmentSize", message.getAttachmentSize());
+        event.put("attachmentUrl", message.getAttachmentObjectKey() == null ? null
+                : "/api/whatsapp/conversations/" + message.getConversation().getId()
+                        + "/messages/" + message.getId() + "/attachment");
         event.put("status", message.getStatus().name());
         event.put("aiGenerated", message.isAiGenerated());
         event.put("manual", message.isManual());
@@ -349,6 +365,41 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
         response.put("status", message.getStatus().name());
         response.put("sent", message.getStatus() == MessageStatus.SENT);
         return response;
+    }
+
+    @Override
+    @Transactional
+    public void attachMedicalReport(Long organizationId, String metaMessageId,
+                                    CloudflareR2StorageService.StoredFile file) {
+        if (metaMessageId == null || metaMessageId.isBlank()) {
+            throw new IllegalArgumentException("WhatsApp message ID is required to attach a report");
+        }
+        WhatsAppMessage message = messageRepo.findByOrganizationIdAndMetaMessageId(organizationId, metaMessageId)
+                .orElseThrow(() -> BusinessException.notFound("WhatsApp message", metaMessageId));
+        message.setAttachmentObjectKey(file.objectKey());
+        message.setAttachmentMimeType(file.contentType());
+        message.setAttachmentFileName(file.fileName());
+        message.setAttachmentSize(file.size());
+        message.setMedicalReport(true);
+        messageRepo.saveAndFlush(message);
+        publishMessageEvent(message, "MESSAGE_ATTACHMENT_READY");
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CloudflareR2StorageService.FileContent downloadMedicalReport(Long conversationId, Long messageId,
+                                                                         Long organizationId) {
+        WhatsAppConversation conversation = conversationRepo.findByOrganizationIdAndId(organizationId, conversationId)
+                .orElseThrow(() -> BusinessException.notFound("WhatsApp conversation", conversationId));
+        requireConversationAccess(conversation, currentUserService.getRequiredCurrentUser());
+        WhatsAppMessage message = messageRepo.findByOrganizationIdAndConversationIdAndId(
+                        organizationId, conversationId, messageId)
+                .orElseThrow(() -> BusinessException.notFound("WhatsApp message", messageId));
+        if (!message.isMedicalReport() || message.getAttachmentObjectKey() == null) {
+            throw BusinessException.notFound("Medical report attachment", messageId);
+        }
+        return r2StorageService.read(message.getAttachmentObjectKey(), message.getAttachmentMimeType(),
+                message.getAttachmentFileName());
     }
 
     private Map<String, Object> toConversationResponse(WhatsAppConversation conversation) {
