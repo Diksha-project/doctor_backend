@@ -39,6 +39,14 @@ public interface PatientChatMessageRepo extends JpaRepository<PatientChatMessage
         java.time.LocalDateTime getUploadedAt();
     }
 
+    interface StoredMedicalReportRow {
+        Long getMessageId();
+        String getObjectKey();
+        String getFileName();
+        String getMimeType();
+        java.time.LocalDateTime getUploadedAt();
+    }
+
     List<HistoryRow> findByPatientIdOrderByCreatedAtDesc(Long patientId, Pageable pageable);
 
     org.springframework.data.domain.Page<PatientChatMessage> findAllByOrderByIdAsc(Pageable pageable);
@@ -94,4 +102,13 @@ public interface PatientChatMessageRepo extends JpaRepository<PatientChatMessage
             + "order by m.createdAt desc")
     List<MedicalReportRow> findMedicalReportsForPatient(@Param("patientId") Long patientId,
                                                         @Param("organizationId") Long organizationId);
+
+    @Query("select m.id as messageId, m.attachmentObjectKey as objectKey, m.attachmentName as fileName, "
+            + "m.attachmentMimeType as mimeType, m.createdAt as uploadedAt "
+            + "from PatientChatMessage m where m.patient.id = :patientId "
+            + "and m.patient.organization.id = :organizationId and m.doctor.organization.id = :organizationId "
+            + "and m.attachmentObjectKey is not null order by m.createdAt desc")
+    List<StoredMedicalReportRow> findStoredMedicalReportsForPatient(@Param("patientId") Long patientId,
+                                                                    @Param("organizationId") Long organizationId,
+                                                                    Pageable pageable);
 }

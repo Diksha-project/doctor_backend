@@ -129,10 +129,20 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
 
             boolean automationEnabled = conversation.getStatus() != ConversationStatus.CLOSED
                     && conversation.isAiEnabled() && !conversation.isHumanTakeover();
+            boolean appointmentAction = isAppointmentAction(messageText, selectionId);
+            boolean reportsAction = "MENU_REPORTS".equals(selectionId);
             boolean reportCandidate = mediaId != null
                     && ("image".equalsIgnoreCase(messageType) || "document".equalsIgnoreCase(messageType));
-            if (!automationEnabled && !reportCandidate) {
+            if (!automationEnabled && !reportCandidate && !appointmentAction && !reportsAction) {
                 log.info("Automation disabled for conversation {} with status {}", conversation.getId(), conversation.getStatus());
+                return;
+            }
+
+            if (reportsAction) {
+                boolean sent = conversationService.sendSavedMedicalReports(
+                        organizationId, patient, doctor, phoneNumber);
+                log.info("Saved medical reports sent from WhatsApp selection: conversationId={} sent={}",
+                        conversation.getId(), sent);
                 return;
             }
 
@@ -183,8 +193,12 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                 return;
             }
 
-            boolean sent = conversationService.sendAutomatedMessage(
-                    organizationId, patient, doctor, phoneNumber, response, interactive.isEmpty() ? null : interactive);
+            boolean sent = appointmentAction && !automationEnabled
+                    ? conversationService.sendSystemNotification(organizationId, patient, doctor, phoneNumber,
+                            response, interactive.isEmpty() ? null : interactive)
+                    : conversationService.sendAutomatedMessage(
+                            organizationId, patient, doctor, phoneNumber, response,
+                            interactive.isEmpty() ? null : interactive);
             if (sent) {
                 log.info("Outbound WhatsApp response sent for conversation {}", conversation.getId());
             } else {
@@ -203,6 +217,20 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
         if (a.length() == 10) a = "91" + a;
         if (b.length() == 10) b = "91" + b;
         return a.equals(b);
+    }
+
+    private boolean isAppointmentAction(String messageText, String selectionId) {
+        String selected = selectionId == null ? "" : selectionId;
+        if (selected.startsWith("APPT_CANCEL_") || selected.startsWith("APPT_RESCHEDULE_")
+                || "MENU_CANCEL_APPOINTMENT".equals(selected)
+                || "MENU_RESCHEDULE_APPOINTMENT".equals(selected)
+                || "MENU_MY_APPOINTMENTS".equals(selected)) {
+            return true;
+        }
+        String normalized = messageText == null ? "" : messageText.toLowerCase(Locale.ROOT);
+        return normalized.contains("appointment")
+                && (normalized.contains("cancel") || normalized.contains("reschedul")
+                    || normalized.contains("my appointment") || normalized.contains("upcoming appointment"));
     }
 
     private String resolveResponse(Doctor doctor, Patient patient, WhatsAppConversation conversation, String messageText,

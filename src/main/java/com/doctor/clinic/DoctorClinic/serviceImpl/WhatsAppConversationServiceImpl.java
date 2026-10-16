@@ -32,6 +32,7 @@ import com.doctor.clinic.DoctorClinic.model.MessageType;
 import com.doctor.clinic.DoctorClinic.model.ResourceScope;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
 import com.doctor.clinic.DoctorClinic.repo.PatientRepo;
+import com.doctor.clinic.DoctorClinic.repo.PatientChatMessageRepo;
 import com.doctor.clinic.DoctorClinic.repo.WhatsAppConversationRepo;
 import com.doctor.clinic.DoctorClinic.repo.WhatsAppMessageRepo;
 import com.doctor.clinic.DoctorClinic.security.CurrentUser;
@@ -46,6 +47,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
     private final WhatsAppMessageRepo messageRepo;
     private final DoctorRepo doctorRepo;
     private final PatientRepo patientRepo;
+    private final PatientChatMessageRepo patientChatMessageRepo;
     private final WhatsappServiceImpl whatsappService;
     private final WhatsAppRealtimeService realtimeService;
     private final PatientChatHistoryService patientChatHistoryService;
@@ -56,6 +58,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
                                           WhatsAppMessageRepo messageRepo,
                                           DoctorRepo doctorRepo,
                                           PatientRepo patientRepo,
+                                          PatientChatMessageRepo patientChatMessageRepo,
                                           WhatsappServiceImpl whatsappService,
                                           WhatsAppRealtimeService realtimeService,
                                           PatientChatHistoryService patientChatHistoryService,
@@ -65,6 +68,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
         this.messageRepo = messageRepo;
         this.doctorRepo = doctorRepo;
         this.patientRepo = patientRepo;
+        this.patientChatMessageRepo = patientChatMessageRepo;
         this.whatsappService = whatsappService;
         this.realtimeService = realtimeService;
         this.patientChatHistoryService = patientChatHistoryService;
@@ -365,6 +369,85 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
         response.put("status", message.getStatus().name());
         response.put("sent", message.getStatus() == MessageStatus.SENT);
         return response;
+    }
+
+    @Override
+    @Transactional
+    public boolean sendSavedMedicalReports(Long organizationId, Patient patient, Doctor doctor, String phoneNumber) {
+        if (patient == null || doctor == null
+                || patient.getOrganization() == null || doctor.getOrganization() == null
+                || !organizationId.equals(patient.getOrganization().getId())
+                || !organizationId.equals(doctor.getOrganization().getId())) {
+            throw new IllegalArgumentException("Patient and doctor must belong to the current organization");
+        }
+
+        WhatsAppConversation conversation = findOrCreateConversation(organizationId, patient, phoneNumber, doctor);
+        List<PatientChatMessageRepo.StoredMedicalReportRow> reports = patientChatMessageRepo
+                .findStoredMedicalReportsForPatient(patient.getId(), organizationId, PageRequest.of(0, 10));
+        if (reports.isEmpty()) {
+            return sendSystemNotification(organizationId, patient, doctor, phoneNumber,
+                    "I couldn't find any medical reports saved for you yet. Send a clear PDF or image of a medical report here, and I'll save it to your patient record.", null);
+        }
+
+        boolean allSent = sendSystemNotification(organizationId, patient, doctor, phoneNumber,
+                "I found " + reports.size() + " saved medical report" + (reports.size() == 1 ? "." : "s.")
+                        + " I'll send them here now.", null);
+        for (PatientChatMessageRepo.StoredMedicalReportRow report : reports) {
+            String fileName = report.getFileName() == null || report.getFileName().isBlank()
+                    ? "medical-report" : report.getFileName();
+            String mimeType = report.getMimeType() == null || report.getMimeType().isBlank()
+                    ? "application/pdf" : report.getMimeType();
+            WhatsAppMessage message = new WhatsAppMessage();
+            message.setConversation(conversation);
+            message.setOrganization(conversation.getOrganization());
+            message.setPatient(patient);
+            message.setDoctor(doctor);
+            message.setDirection(MessageDirection.OUTBOUND);
+            message.setSenderType(MessageSenderType.AI);
+            message.setMessageType(mimeType.startsWith("image/") ? MessageType.IMAGE : MessageType.DOCUMENT);
+            message.setContent("Medical report: " + fileName);
+            message.setAttachmentObjectKey(report.getObjectKey());
+            message.setAttachmentMimeType(mimeType);
+            message.setAttachmentFileName(fileName);
+            message.setMedicalReport(true);
+            message.setAiGenerated(true);
+            message.setStatus(MessageStatus.PROCESSING);
+            message = messageRepo.saveAndFlush(message);
+
+            LocalDateTime now = LocalDateTime.now();
+            try {
+                CloudflareR2StorageService.FileContent file = r2StorageService.read(
+                        report.getObjectKey(), mimeType, fileName);
+                WhatsappServiceImpl.SendResult result = whatsappService.sendMediaWithResult(
+                        doctor, phoneNumber, file.bytes(), mimeType, fileName, null);
+                if (result.sent()) {
+                    message.setStatus(MessageStatus.SENT);
+                    message.setSentAt(now);
+                    message.setMetaMessageId(result.providerMessageId());
+                } else {
+                    allSent = false;
+                    message.setStatus(MessageStatus.FAILED);
+                    message.setFailedAt(now);
+                    message.setErrorMessage("WhatsApp could not send the stored report");
+                }
+            } catch (Exception ex) {
+                allSent = false;
+                message.setStatus(MessageStatus.FAILED);
+                message.setFailedAt(now);
+                message.setErrorMessage("Stored report could not be retrieved from Cloudflare R2");
+            }
+            message = messageRepo.saveAndFlush(message);
+            conversation.setLastMessageAt(now);
+            conversation.setUpdatedAt(now);
+            conversationRepo.save(conversation);
+            publishMessageEvent(message, "MESSAGE_STATUS_UPDATED");
+            publishConversationUpdated(conversation);
+        }
+        if (!allSent) {
+            sendSystemNotification(organizationId, patient, doctor, phoneNumber,
+                    "Some reports couldn't be sent right now. Please try again later or contact the clinic.", null);
+        }
+        return allSent;
     }
 
     @Override
