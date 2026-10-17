@@ -506,8 +506,8 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
     }
 
     private AppointmentBookingChatService.Reply rescheduleDateChoices(Appointment appointment, Doctor doctor) {
-        java.time.LocalDate today = java.time.LocalDate.now();
-        java.time.LocalTime now = java.time.LocalTime.now();
+        java.time.LocalDate today = ClinicTime.today();
+        java.time.LocalTime now = ClinicTime.now();
         java.util.TreeSet<java.time.LocalDate> dates = new java.util.TreeSet<>();
         doctorSlotRepo.findByDoctorIdAndSlotDateBetweenAndIsAvailableTrue(doctor.getId(), today, today.plusDays(30))
                 .stream().filter(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::hasAvailability)
@@ -524,8 +524,8 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
     }
 
     private AppointmentBookingChatService.Reply rescheduleTimeChoices(Appointment appointment, Doctor doctor, java.time.LocalDate date) {
-        java.time.LocalDate today = java.time.LocalDate.now();
-        java.time.LocalTime now = java.time.LocalTime.now();
+        java.time.LocalDate today = ClinicTime.today();
+        java.time.LocalTime now = ClinicTime.now();
         List<Map<String, Object>> rows = doctorSlotRepo.findByDoctorIdAndSlotDateAndIsAvailableTrue(doctor.getId(), date).stream()
                 .filter(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::hasAvailability)
                 .filter(slot -> date.isAfter(today) || slot.getStartTime().isAfter(now))
@@ -548,8 +548,8 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
     }
 
     private List<Appointment> upcomingAppointments(Long organizationId, Patient patient, Doctor doctor, List<String> aliases) {
-        java.time.LocalDate today = java.time.LocalDate.now();
-        java.time.LocalTime now = java.time.LocalTime.now();
+        java.time.LocalDate today = ClinicTime.today();
+        java.time.LocalTime now = ClinicTime.now();
         return appointmentRepo.findPatientHistory(organizationId, patient.getId(), aliases).stream()
                 .filter(appointment -> appointment.getDoctor() != null && appointment.getDoctor().getId().equals(doctor.getId()))
                 .filter(appointment -> "SCHEDULED".equalsIgnoreCase(appointment.getAppointmentStatus())
@@ -566,9 +566,9 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                 appointment.getDoctor() != null && appointment.getDoctor().getId().equals(doctor.getId())
                         && ("SCHEDULED".equalsIgnoreCase(appointment.getAppointmentStatus())
                         || "CONFIRMED".equalsIgnoreCase(appointment.getAppointmentStatus()))
-                        && (appointment.getAppointmentDate().isAfter(java.time.LocalDate.now())
-                        || (appointment.getAppointmentDate().equals(java.time.LocalDate.now())
-                        && appointment.getAppointmentTime().isAfter(java.time.LocalTime.now())))).orElse(null);
+                        && (appointment.getAppointmentDate().isAfter(ClinicTime.today())
+                        || (appointment.getAppointmentDate().equals(ClinicTime.today())
+                        && appointment.getAppointmentTime().isAfter(ClinicTime.now())))).orElse(null);
     }
 
     private List<String> patientPhoneAliases(Patient patient) {
@@ -588,7 +588,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
         String title = "ARCHSTER HEALTH - CHATBOT MENU";
         List<Map<String, Object>> rows = List.of(
                 menuRow("MENU_BOOK_APPOINTMENT", "Book an appointment", "Find a doctor and available time"),
-                menuRow("MENU_MY_APPOINTMENTS", "My appointments", "View upcoming and cancelled appointments"),
+                menuRow("MENU_MY_APPOINTMENTS", "My appointments", "View upcoming appointments"),
                 menuRow("MENU_ASK_HEALTH", "Ask a health question", "General health information and guidance"),
                 menuRow("MENU_REPORTS", "Reports & prescriptions", "Access medical documents securely"),
                 menuRow("MENU_CLINIC_INFO", "Clinic information", "Fees, timings, location and services"),
@@ -619,31 +619,12 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
         List<String> aliases = patientPhoneAliases(patient);
         List<Appointment> upcoming = upcomingAppointments(organizationId, patient, doctor, aliases)
                 .stream().limit(5).toList();
-        List<Appointment> cancelled = appointmentRepo.findPatientHistory(organizationId, patient.getId(), aliases).stream()
-                .filter(appointment -> appointment.getDoctor() != null && appointment.getDoctor().getId().equals(doctor.getId()))
-                .filter(appointment -> "CANCELLED".equalsIgnoreCase(appointment.getAppointmentStatus()))
-                .sorted(java.util.Comparator.comparing(Appointment::getCancelledAt,
-                        java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
-                .limit(5).toList();
-        if (upcoming.isEmpty() && cancelled.isEmpty()) {
-            return "You don't have any upcoming or recently cancelled appointments with Dr. "
-                    + doctor.getFullName() + ". Choose ‘Book an appointment’ if you'd like to schedule one.";
-        }
-
-        StringBuilder response = new StringBuilder("Your appointments with Dr. ").append(doctor.getFullName()).append(':');
-        if (!upcoming.isEmpty()) {
-            response.append("\nUpcoming:");
-            upcoming.forEach(appointment -> response.append("\n")
-                    .append(appointment.getAppointmentDate()).append(" at ").append(appointment.getAppointmentTime())
-                    .append(" - ").append(appointment.getAppointmentStatus()));
-        }
-        if (!cancelled.isEmpty()) {
-            response.append("\nRecently cancelled:");
-            cancelled.forEach(appointment -> response.append("\n")
-                    .append(appointment.getAppointmentDate()).append(" at ").append(appointment.getAppointmentTime())
-                    .append(" - CANCELLED"));
-        }
-        return response.toString();
+        if (upcoming.isEmpty()) return "You don't have any upcoming appointments with Dr. "
+                + doctor.getFullName() + ". Choose ‘Book an appointment’ if you'd like to schedule one.";
+        String details = upcoming.stream().map(appointment -> appointment.getAppointmentDate() + " at "
+                + appointment.getAppointmentTime() + " - " + appointment.getAppointmentStatus())
+                .collect(java.util.stream.Collectors.joining("\n"));
+        return "Your upcoming appointments with Dr. " + doctor.getFullName() + ":\n" + details;
     }
 
     private boolean hasSupportedFileSignature(byte[] bytes, String mimeType) {

@@ -200,7 +200,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 
 		appointment.setPaymentStatus("PAID");
 		appointment.setPaymentId(paymentId);
-		appointment.setPaymentDate(LocalDateTime.now());
+		appointment.setPaymentDate(ClinicTime.dateTimeNow());
 		appointment.setAppointmentStatus("CONFIRMED");
 
 		appointmentRepo.save(appointment);
@@ -235,9 +235,9 @@ public class AppointmentServiceImpl implements AppointmentService {
 		appointment.setAppointmentStatus("CANCELLED");
 		appointment.setCancellationReason(reason);
 		appointment.setCancelledBy("PATIENT");
-		appointment.setCancelledAt(LocalDateTime.now());
+		appointment.setCancelledAt(ClinicTime.dateTimeNow());
 
-		appointmentRepo.save(appointment);
+		appointmentRepo.saveAndFlush(appointment);
 
 		log.info("Appointment cancelled. ID: {}, Reason: {}", appointment.getId(), reason);
 	}
@@ -269,7 +269,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 		releaseAppointmentSlot(original);
 		original.setAppointmentStatus("CANCELLED");
 		original.setCancelledBy("PATIENT");
-		original.setCancelledAt(LocalDateTime.now());
+		original.setCancelledAt(ClinicTime.dateTimeNow());
 		original.setCancellationReason("Rescheduling in progress");
 		appointmentRepo.saveAndFlush(original);
 
@@ -298,7 +298,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 		// appointment points back to it through originalAppointmentId.
 		original.setAppointmentStatus("CANCELLED");
 		original.setCancellationReason("Cancelled because it was rescheduled to " + newDate + " at " + newTime);
-		appointmentRepo.save(original);
+		appointmentRepo.saveAndFlush(original);
 		return moved;
 	}
 
@@ -307,10 +307,10 @@ public class AppointmentServiceImpl implements AppointmentService {
 		if (!("SCHEDULED".equalsIgnoreCase(status) || "CONFIRMED".equalsIgnoreCase(status))) {
 			throw new RuntimeException("Only scheduled or confirmed appointments can be changed");
 		}
-		LocalDate today = LocalDate.now();
+		LocalDate today = ClinicTime.today();
 		if (appointment.getAppointmentDate().isBefore(today)
 				|| (appointment.getAppointmentDate().equals(today)
-				&& !appointment.getAppointmentTime().isAfter(LocalTime.now()))) {
+				&& !appointment.getAppointmentTime().isAfter(ClinicTime.now()))) {
 			throw new RuntimeException("This appointment has already started or passed");
 		}
 	}
@@ -413,7 +413,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 		if (newStatus.equals("CANCELLED") || newStatus.equals("NO_SHOW")) {
 			appointment.setCancellationReason(request.getCancellationReason());
 			appointment.setCancelledBy("DOCTOR");
-			appointment.setCancelledAt(LocalDateTime.now());
+			appointment.setCancelledAt(ClinicTime.dateTimeNow());
 
 			// Release slot if cancelled
 			doctorSlotRepo.findByDoctorIdAndSlotDateAndStartTime(appointment.getDoctor().getId(),
@@ -437,7 +437,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 		response.put("oldStatus", oldStatus);
 		response.put("newStatus", newStatus);
 		response.put("message", "Status updated successfully");
-		response.put("updatedAt", LocalDateTime.now());
+		response.put("updatedAt", ClinicTime.dateTimeNow());
 
 		return response;
 	}
@@ -447,8 +447,8 @@ public class AppointmentServiceImpl implements AppointmentService {
 
 		Doctor doctor = doctorRepo.findById(doctorId).orElseThrow(() -> new RuntimeException("Doctor not found"));
 
-		LocalDate today = LocalDate.now();
-		LocalTime now = LocalTime.now();
+		LocalDate today = ClinicTime.today();
+		LocalTime now = ClinicTime.now();
 
 		// Get all today's appointments
 		List<Appointment> todayAppointments = appointmentRepo.findByDoctorIdAndAppointmentDate(doctorId, today);
@@ -493,7 +493,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 	@Override
 	public AppointmentListResponse listForDoctor(Long doctorId, LocalDate from, LocalDate to, String search,
 			String status) {
-		LocalDate rangeFrom = from != null ? from : LocalDate.now().withDayOfMonth(1);
+		LocalDate rangeFrom = from != null ? from : ClinicTime.today().withDayOfMonth(1);
 		LocalDate rangeTo = to != null ? to : rangeFrom.plusMonths(1).minusDays(1);
 
 		List<Appointment> appointments = appointmentRepo.findByDoctorIdAndAppointmentDateBetween(doctorId, rangeFrom,

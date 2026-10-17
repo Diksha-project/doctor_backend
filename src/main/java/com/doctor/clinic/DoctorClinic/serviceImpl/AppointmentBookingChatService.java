@@ -88,7 +88,7 @@ public class AppointmentBookingChatService {
         return buttons("What type of visit would you like with Dr. "+doctor.getFullName()+"?", List.of(btn("BOOK_TYPE_CONSULT",specialty),btn("BOOK_TYPE_FOLLOW_UP","Follow-up")));
     }
     private Reply dateChoices(Doctor doctor, Patient patient, PatientBookingSession s) {
-        LocalDate today=LocalDate.now(); LocalTime now=LocalTime.now();
+        LocalDate today=ClinicTime.today(); LocalTime now=ClinicTime.now();
         List<DoctorSlot> slots=slotRepo.findByDoctorIdAndSlotDateBetweenAndIsAvailableTrue(doctor.getId(),today,today.plusDays(30));
         TreeSet<LocalDate> dates=new TreeSet<>(); slots.stream().filter(sl -> isBookable(sl,today,now)).map(DoctorSlot::getSlotDate).forEach(dates::add);
         List<Map<String,Object>> rows=dates.stream().limit(10).map(d -> row("BOOK_DATE_"+d,d.format(DateTimeFormatter.ofPattern("EEE, dd MMM")),"Available appointment times")).toList();
@@ -100,7 +100,7 @@ public class AppointmentBookingChatService {
         return list("Please choose an available date.","Choose date","Available dates",rows);
     }
     private Reply timeChoices(Doctor doctor, Patient patient, PatientBookingSession s) {
-        LocalDate date=s.getAppointmentDate(); LocalDate today=LocalDate.now(); LocalTime now=LocalTime.now();
+        LocalDate date=s.getAppointmentDate(); LocalDate today=ClinicTime.today(); LocalTime now=ClinicTime.now();
         List<Map<String,Object>> rows=slotRepo.findByDoctorIdAndSlotDateAndIsAvailableTrue(doctor.getId(),date).stream().filter(sl -> isBookable(sl,today,now))
                 .sorted(Comparator.comparing(DoctorSlot::getStartTime)).limit(10)
                 .map(slot -> row("BOOK_TIME_"+slot.getStartTime(),slot.getStartTime().format(DateTimeFormatter.ofPattern("h:mm a")),"Available" )).toList();
