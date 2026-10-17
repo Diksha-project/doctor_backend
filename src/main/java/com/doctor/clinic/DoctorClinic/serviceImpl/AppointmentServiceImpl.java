@@ -291,14 +291,19 @@ public class AppointmentServiceImpl implements AppointmentService {
 
 		Appointment replacement = appointmentRepo.findById(moved.getAppointmentId())
 				.orElseThrow(() -> new RuntimeException("Rescheduled appointment could not be loaded"));
+		if (!newDate.equals(replacement.getAppointmentDate()) || !newTime.equals(replacement.getAppointmentTime())) {
+			throw new RuntimeException("Rescheduled appointment does not match the selected date and time");
+		}
 		replacement.setOriginalAppointmentId(original.getId());
 		replacement.setRescheduledCount(original.getRescheduledCount() == null ? 1 : original.getRescheduledCount() + 1);
-		appointmentRepo.save(replacement);
+		appointmentRepo.saveAndFlush(replacement);
 		// Keep the previous booking cancelled in appointment history. The replacement
 		// appointment points back to it through originalAppointmentId.
 		original.setAppointmentStatus("CANCELLED");
 		original.setCancellationReason("Cancelled because it was rescheduled to " + newDate + " at " + newTime);
 		appointmentRepo.saveAndFlush(original);
+		log.info("Patient appointment rescheduled: previousAppointmentId={} replacementAppointmentId={} selectedDate={} selectedTime={}",
+				original.getId(), replacement.getId(), replacement.getAppointmentDate(), replacement.getAppointmentTime());
 		return moved;
 	}
 

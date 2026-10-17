@@ -265,7 +265,9 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
         } else if (prompt.contains("choose the appointment you'd like to reschedule")) {
             actionPrefix = "APPT_RESCHEDULE_SELECT_";
         } else {
-            return selectionId;
+            String recoveredStep = recoverRescheduleStep(organizationId, doctor, patient, conversation,
+                    replyTitle, lastOutbound.getContent());
+            return recoveredStep == null ? selectionId : recoveredStep;
         }
 
         String normalizedReply = replyTitle.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
@@ -286,6 +288,92 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                     conversation.getId(), recovered);
         }
         return recovered;
+    }
+
+    /**
+     * WhatsApp normally returns the interactive row ID. If a client only sends
+     * the visible row title, rebuild the action from this conversation's prior
+     * choices so the selected date/time is not lost.
+     */
+    private String recoverRescheduleStep(Long organizationId, Doctor doctor, Patient patient,
+                                         WhatsAppConversation conversation, String replyTitle, String prompt) {
+        List<WhatsAppMessage> history = whatsappMessageRepo
+                .findByOrganizationIdAndConversationIdOrderByCreatedAtDesc(organizationId, conversation.getId(),
+                        org.springframework.data.domain.PageRequest.of(0, 12));
+        List<String> inboundReplies = history.stream()
+                .filter(message -> message.getDirection() == MessageDirection.INBOUND)
+                .map(WhatsAppMessage::getContent)
+                .filter(content -> content != null && !content.isBlank())
+                .limit(4).toList();
+        if (inboundReplies.isEmpty()) return null;
+
+        List<String> aliases = patientPhoneAliases(patient);
+        List<Appointment> appointments = upcomingAppointments(organizationId, patient, doctor, aliases);
+        if (appointments.isEmpty()) return null;
+
+        String normalizedPrompt = prompt.toLowerCase(Locale.ROOT);
+        if (normalizedPrompt.startsWith("choose a new date") && inboundReplies.size() >= 2) {
+            Appointment appointment = findAppointmentByVisibleTitle(appointments, inboundReplies.get(1));
+            if (appointment == null) return null;
+            String targetDate = normalizeVisibleTitle(replyTitle);
+            return doctorSlotRepo.findByDoctorIdAndSlotDateBetweenAndIsAvailableTrue(
+                            doctor.getId(), ClinicTime.today(), ClinicTime.today().plusDays(30)).stream()
+                    .filter(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::hasAvailability)
+                    .map(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::getSlotDate)
+                    .filter(date -> date.isAfter(ClinicTime.today()) || doctorSlotRepo
+                            .findByDoctorIdAndSlotDateAndIsAvailableTrue(doctor.getId(), date).stream()
+                            .filter(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::hasAvailability)
+                            .anyMatch(slot -> slot.getStartTime().isAfter(ClinicTime.now())))
+                    .filter(date -> normalizeVisibleTitle(date.format(
+                            java.time.format.DateTimeFormatter.ofPattern("EEE, dd MMM"))).equals(targetDate))
+                    .findFirst().map(date -> "APPT_RESCHEDULE_DATE_" + appointment.getId() + "_" + date)
+                    .orElse(null);
+        }
+
+        java.util.regex.Matcher timePrompt = java.util.regex.Pattern
+                .compile("(?i)^choose a new time on (\\d{4}-\\d{2}-\\d{2})\\.").matcher(prompt.trim());
+        if (timePrompt.find() && inboundReplies.size() >= 3) {
+            Appointment appointment = findAppointmentByVisibleTitle(appointments, inboundReplies.get(2));
+            if (appointment == null) return null;
+            try {
+                LocalDate date = LocalDate.parse(timePrompt.group(1));
+                LocalTime selectedTime = LocalTime.parse(replyTitle.trim(),
+                        java.time.format.DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH));
+                boolean offered = doctorSlotRepo.findByDoctorIdAndSlotDateAndIsAvailableTrue(doctor.getId(), date).stream()
+                        .filter(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::hasAvailability)
+                        .anyMatch(slot -> slot.getStartTime().equals(selectedTime));
+                return offered ? "APPT_RESCHEDULE_TIME_" + appointment.getId() + "_" + date + "_" + selectedTime : null;
+            } catch (RuntimeException ignored) {
+                return null;
+            }
+        }
+
+        java.util.regex.Matcher confirmPrompt = java.util.regex.Pattern
+                .compile("(?i).*\\bto (\\d{4}-\\d{2}-\\d{2}) at (\\d{2}:\\d{2}(?::\\d{2})?)\\?$")
+                .matcher(prompt.trim());
+        if (confirmPrompt.matches() && inboundReplies.size() >= 4
+                && "confirm time".equalsIgnoreCase(replyTitle.trim())) {
+            Appointment appointment = findAppointmentByVisibleTitle(appointments, inboundReplies.get(3));
+            if (appointment == null) return null;
+            return "APPT_RESCHEDULE_CONFIRM_" + appointment.getId() + "_"
+                    + confirmPrompt.group(1) + "_" + confirmPrompt.group(2);
+        }
+        return null;
+    }
+
+    private Appointment findAppointmentByVisibleTitle(List<Appointment> appointments, String title) {
+        String normalized = normalizeVisibleTitle(title);
+        return appointments.stream().filter(appointment -> {
+            String visibleTitle = appointment.getAppointmentDate().format(
+                    java.time.format.DateTimeFormatter.ofPattern("dd MMM")) + " "
+                    + appointment.getAppointmentTime().format(
+                            java.time.format.DateTimeFormatter.ofPattern("h:mm a"));
+            return normalized.equals(normalizeVisibleTitle(visibleTitle));
+        }).findFirst().orElse(null);
+    }
+
+    private String normalizeVisibleTitle(String value) {
+        return value == null ? "" : value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
     }
 
     private String resolveResponse(Doctor doctor, Patient patient, WhatsAppConversation conversation, String messageText,
@@ -513,7 +601,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                 .stream().filter(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::hasAvailability)
                 .filter(slot -> slot.getSlotDate().isAfter(today) || slot.getStartTime().isAfter(now))
                 .map(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::getSlotDate)
-                .filter(date -> !date.equals(appointment.getAppointmentDate())).forEach(dates::add);
+                .forEach(dates::add);
         if (dates.isEmpty()) return new AppointmentBookingChatService.Reply("There are no other available times in the next 30 days. Please contact the clinic to reschedule.", null);
         List<Map<String, Object>> rows = dates.stream().limit(10).map(date -> menuRow(
                 "APPT_RESCHEDULE_DATE_" + appointment.getId() + "_" + date,
