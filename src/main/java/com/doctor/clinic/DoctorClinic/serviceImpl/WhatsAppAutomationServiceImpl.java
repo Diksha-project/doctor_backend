@@ -294,6 +294,12 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
         return recovered;
     }
 
+    private String lastOutboundContent(Long organizationId, WhatsAppConversation conversation) {
+        return whatsappMessageRepo.findTopByOrganizationIdAndConversationIdAndDirectionOrderByCreatedAtDesc(
+                        organizationId, conversation.getId(), MessageDirection.OUTBOUND)
+                .map(WhatsAppMessage::getContent).orElse(null);
+    }
+
     /**
      * WhatsApp normally returns the interactive row ID. If a client only sends
      * the visible row title, rebuild the action from this conversation's prior
@@ -316,21 +322,20 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
         if (appointments.isEmpty()) return null;
 
         String normalizedPrompt = prompt.toLowerCase(Locale.ROOT);
-        if (normalizedPrompt.startsWith("choose a new date") && inboundReplies.size() >= 2) {
-            Appointment appointment = findAppointmentByVisibleTitle(appointments, inboundReplies.get(1));
+        if (normalizedPrompt.startsWith("choose a new date")) {
+            Appointment appointment = inboundReplies.size() >= 2
+                    ? findAppointmentByVisibleTitle(appointments, inboundReplies.get(1)) : null;
+            // When there is only one upcoming appointment, the flow skips the
+            // appointment picker; use that appointment to recover a date-only reply.
+            if (appointment == null && appointments.size() == 1) appointment = appointments.get(0);
             if (appointment == null) return null;
+            Long selectedAppointmentId = appointment.getId();
             String targetDate = normalizeVisibleTitle(replyTitle);
-            return doctorSlotRepo.findByDoctorIdAndSlotDateBetweenAndIsAvailableTrue(
-                            doctor.getId(), ClinicTime.today(), ClinicTime.today().plusDays(90)).stream()
-                    .filter(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::hasAvailability)
-                    .map(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::getSlotDate)
-                    .filter(date -> date.isAfter(ClinicTime.today()) || doctorSlotRepo
-                            .findByDoctorIdAndSlotDateAndIsAvailableTrue(doctor.getId(), date).stream()
-                            .filter(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::hasAvailability)
-                            .anyMatch(slot -> slot.getStartTime().isAfter(ClinicTime.now())))
+            LocalDate today = ClinicTime.today();
+            return java.util.stream.Stream.iterate(today, date -> date.plusDays(1)).limit(91)
                     .filter(date -> normalizeVisibleTitle(date.format(
                             java.time.format.DateTimeFormatter.ofPattern("EEE, dd MMM"))).equals(targetDate))
-                    .findFirst().map(date -> "APPT_RESCHEDULE_DATE_" + appointment.getId() + "_" + date)
+                    .findFirst().map(date -> "APPT_RESCHEDULE_DATE_" + selectedAppointmentId + "_" + date)
                     .orElse(null);
         }
 
@@ -528,17 +533,38 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
             return Optional.of(rescheduleDateChoices(appointment, doctor));
         }
         if (selected.startsWith("APPT_RESCHEDULE_DATE_")) {
-            String[] parts = selected.substring("APPT_RESCHEDULE_DATE_".length()).split("_", 2);
-            if (parts.length != 2) return Optional.of(new AppointmentBookingChatService.Reply("I couldn't read that date. Please start rescheduling again.", null));
-            Long id = parseAppointmentId(parts[0]);
+            String dateSelection = selected;
+            String[] parts = dateSelection.substring("APPT_RESCHEDULE_DATE_".length()).split("_", 2);
+            Long id = parts.length == 2 ? parseAppointmentId(parts[0]) : null;
+            LocalDate date = null;
+            if (parts.length == 2) {
+                try { date = LocalDate.parse(parts[1]); } catch (RuntimeException ignored) { }
+            }
+            if (id == null || date == null) {
+                String recovered = recoverRescheduleStep(organizationId, doctor, patient, conversation,
+                        messageText, lastOutboundContent(organizationId, conversation));
+                if (recovered != null && recovered.startsWith("APPT_RESCHEDULE_DATE_")) {
+                    String[] recoveredParts = recovered.substring("APPT_RESCHEDULE_DATE_".length()).split("_", 2);
+                    if (recoveredParts.length == 2) {
+                        id = parseAppointmentId(recoveredParts[0]);
+                        try { date = LocalDate.parse(recoveredParts[1]); } catch (RuntimeException ignored) { }
+                    }
+                }
+            }
+            if (id == null || date == null) {
+                log.warn("Could not resolve WhatsApp reschedule date selection: conversationId={} selectionId={} title={}",
+                        conversation.getId(), selected, messageText);
+                return Optional.of(new AppointmentBookingChatService.Reply("I couldn't identify that date. Please choose one of the dates shown, or ask to reschedule again.", null));
+            }
+            Appointment appointment = findUpcomingAppointment(id, organizationId, patient, doctor, phoneAliases);
+            if (appointment == null) return Optional.of(new AppointmentBookingChatService.Reply("I couldn't find that upcoming appointment. Please start again.", null));
+            refreshDoctorSlots(doctor);
             try {
-                LocalDate date = LocalDate.parse(parts[1]);
-                Appointment appointment = findUpcomingAppointment(id, organizationId, patient, doctor, phoneAliases);
-                if (appointment == null) return Optional.of(new AppointmentBookingChatService.Reply("I couldn't find that upcoming appointment. Please start again.", null));
-                refreshDoctorSlots(doctor);
                 return Optional.of(rescheduleTimeChoices(appointment, doctor, date));
             } catch (RuntimeException ex) {
-                return Optional.of(new AppointmentBookingChatService.Reply("I couldn't read that date. Please start rescheduling again.", null));
+                log.error("Failed to load reschedule times: conversationId={} appointmentId={} date={}",
+                        conversation.getId(), id, date, ex);
+                return Optional.of(new AppointmentBookingChatService.Reply("I couldn't load times for that date. Please choose another available date.", null));
             }
         }
         if (selected.startsWith("APPT_RESCHEDULE_TIME_")) {
