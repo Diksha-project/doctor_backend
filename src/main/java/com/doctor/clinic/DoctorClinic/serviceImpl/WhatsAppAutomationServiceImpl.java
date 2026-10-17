@@ -34,6 +34,7 @@ import com.doctor.clinic.DoctorClinic.repo.WhatsAppMessageRepo;
 import com.doctor.clinic.DoctorClinic.repo.WhatsAppResponseRuleRepo;
 import com.doctor.clinic.DoctorClinic.repo.DoctorSlotRepo;
 import com.doctor.clinic.DoctorClinic.service.AppointmentService;
+import com.doctor.clinic.DoctorClinic.service.DoctorAvailabilityService;
 import com.doctor.clinic.DoctorClinic.service.WhatsAppAutomationService;
 
 import lombok.extern.slf4j.Slf4j;
@@ -60,6 +61,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
     private final AppointmentRepo appointmentRepo;
     private final DoctorSlotRepo doctorSlotRepo;
     private final AppointmentService appointmentService;
+    private final DoctorAvailabilityService doctorAvailabilityService;
 
     public WhatsAppAutomationServiceImpl(DoctorRepo doctorRepo,
                                         PatientRepo patientRepo,
@@ -78,7 +80,8 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                                         PatientChatHistoryService patientChatHistoryService,
                                         AppointmentRepo appointmentRepo,
                                         DoctorSlotRepo doctorSlotRepo,
-                                        AppointmentService appointmentService) {
+                                        AppointmentService appointmentService,
+                                        DoctorAvailabilityService doctorAvailabilityService) {
         this.doctorRepo = doctorRepo;
         this.patientRepo = patientRepo;
         this.conversationRepo = conversationRepo;
@@ -97,6 +100,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
         this.appointmentRepo = appointmentRepo;
         this.doctorSlotRepo = doctorSlotRepo;
         this.appointmentService = appointmentService;
+        this.doctorAvailabilityService = doctorAvailabilityService;
     }
 
     @Override
@@ -317,7 +321,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
             if (appointment == null) return null;
             String targetDate = normalizeVisibleTitle(replyTitle);
             return doctorSlotRepo.findByDoctorIdAndSlotDateBetweenAndIsAvailableTrue(
-                            doctor.getId(), ClinicTime.today(), ClinicTime.today().plusDays(30)).stream()
+                            doctor.getId(), ClinicTime.today(), ClinicTime.today().plusDays(90)).stream()
                     .filter(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::hasAvailability)
                     .map(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::getSlotDate)
                     .filter(date -> date.isAfter(ClinicTime.today()) || doctorSlotRepo
@@ -520,6 +524,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
             Long id = parseAppointmentId(selected.substring("APPT_RESCHEDULE_SELECT_".length()));
             Appointment appointment = findUpcomingAppointment(id, organizationId, patient, doctor, phoneAliases);
             if (appointment == null) return Optional.of(new AppointmentBookingChatService.Reply("I couldn't find that upcoming appointment. Please choose an appointment again.", null));
+            refreshDoctorSlots(doctor);
             return Optional.of(rescheduleDateChoices(appointment, doctor));
         }
         if (selected.startsWith("APPT_RESCHEDULE_DATE_")) {
@@ -530,6 +535,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                 LocalDate date = LocalDate.parse(parts[1]);
                 Appointment appointment = findUpcomingAppointment(id, organizationId, patient, doctor, phoneAliases);
                 if (appointment == null) return Optional.of(new AppointmentBookingChatService.Reply("I couldn't find that upcoming appointment. Please start again.", null));
+                refreshDoctorSlots(doctor);
                 return Optional.of(rescheduleTimeChoices(appointment, doctor, date));
             } catch (RuntimeException ex) {
                 return Optional.of(new AppointmentBookingChatService.Reply("I couldn't read that date. Please start rescheduling again.", null));
@@ -546,10 +552,8 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                 LocalTime time = LocalTime.parse(value.substring(dateEnd + 1));
                 Appointment appointment = findUpcomingAppointment(id, organizationId, patient, doctor, phoneAliases);
                 if (appointment == null) return Optional.of(new AppointmentBookingChatService.Reply("I couldn't find that upcoming appointment. Please start again.", null));
-                String body = "Reschedule your appointment with Dr. " + doctor.getFullName() + " to " + date + " at " + time + "?";
-                return Optional.of(new AppointmentBookingChatService.Reply(body, appointmentButtons(body,
-                        button("APPT_RESCHEDULE_CONFIRM_" + id + "_" + date + "_" + time, "Confirm time"),
-                        button("APPT_RESCHEDULE_ABORT", "Keep current time"))));
+                return Optional.of(completePatientReschedule(organizationId, patient, doctor, phoneAliases,
+                        id, date, time));
             } catch (RuntimeException ex) {
                 return Optional.of(new AppointmentBookingChatService.Reply("I couldn't read that time. Please choose an available time again.", null));
             }
@@ -559,15 +563,8 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                     "^APPT_RESCHEDULE_CONFIRM_(\\d+)_(\\d{4}-\\d{2}-\\d{2})_(\\d{2}:\\d{2}(?::\\d{2})?)$").matcher(selected);
             if (!matcher.matches()) return Optional.of(new AppointmentBookingChatService.Reply("I couldn't read that time. Please start rescheduling again.", null));
             Long id = parseAppointmentId(matcher.group(1));
-            try {
-                var moved = appointmentService.reschedulePatientAppointment(organizationId, patient.getId(), phoneAliases,
-                        id, LocalDate.parse(matcher.group(2)), LocalTime.parse(matcher.group(3)));
-                return Optional.of(new AppointmentBookingChatService.Reply("Your previous appointment has been cancelled, and your new appointment is scheduled for "
-                        + moved.getAppointmentDate() + " at " + moved.getAppointmentTime() + ". Please contact the clinic about payment confirmation.", null));
-            } catch (RuntimeException ex) {
-                log.info("WhatsApp patient reschedule could not complete for appointment {}: {}", id, ex.getMessage());
-                return Optional.of(new AppointmentBookingChatService.Reply("That time is no longer available or this appointment can't be changed. Please start again and choose another time, or contact the clinic.", null));
-            }
+            return Optional.of(completePatientReschedule(organizationId, patient, doctor, phoneAliases,
+                    id, LocalDate.parse(matcher.group(2)), LocalTime.parse(matcher.group(3))));
         }
 
         boolean cancelRequested = "MENU_CANCEL_APPOINTMENT".equals(selected)
@@ -597,12 +594,12 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
         java.time.LocalDate today = ClinicTime.today();
         java.time.LocalTime now = ClinicTime.now();
         java.util.TreeSet<java.time.LocalDate> dates = new java.util.TreeSet<>();
-        doctorSlotRepo.findByDoctorIdAndSlotDateBetweenAndIsAvailableTrue(doctor.getId(), today, today.plusDays(30))
+        doctorSlotRepo.findByDoctorIdAndSlotDateBetweenAndIsAvailableTrue(doctor.getId(), today, today.plusDays(90))
                 .stream().filter(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::hasAvailability)
                 .filter(slot -> slot.getSlotDate().isAfter(today) || slot.getStartTime().isAfter(now))
                 .map(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::getSlotDate)
                 .forEach(dates::add);
-        if (dates.isEmpty()) return new AppointmentBookingChatService.Reply("There are no other available times in the next 30 days. Please contact the clinic to reschedule.", null);
+        if (dates.isEmpty()) return new AppointmentBookingChatService.Reply("There are no available appointment times in the next 90 days. Please contact the clinic to reschedule.", null);
         List<Map<String, Object>> rows = dates.stream().limit(10).map(date -> menuRow(
                 "APPT_RESCHEDULE_DATE_" + appointment.getId() + "_" + date,
                 date.format(java.time.format.DateTimeFormatter.ofPattern("EEE, dd MMM")), "Available appointment times")).toList();
@@ -621,10 +618,42 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                 .sorted(java.util.Comparator.comparing(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::getStartTime))
                 .limit(10).map(slot -> menuRow("APPT_RESCHEDULE_TIME_" + appointment.getId() + "_" + date + "_" + slot.getStartTime(),
                         slot.getStartTime().format(java.time.format.DateTimeFormatter.ofPattern("h:mm a")), "Available" )).toList();
-        if (rows.isEmpty()) return rescheduleDateChoices(appointment, doctor);
+        if (rows.isEmpty()) {
+            java.time.LocalDate nextAvailableDate = doctorSlotRepo
+                    .findByDoctorIdAndSlotDateBetweenAndIsAvailableTrue(doctor.getId(), date.plusDays(1), date.plusDays(90))
+                    .stream().filter(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::hasAvailability)
+                    .filter(slot -> slot.getSlotDate().isAfter(today) || slot.getStartTime().isAfter(now))
+                    .map(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::getSlotDate)
+                    .min(java.util.Comparator.naturalOrder()).orElse(null);
+            if (nextAvailableDate != null) return rescheduleTimeChoices(appointment, doctor, nextAvailableDate);
+            return new AppointmentBookingChatService.Reply("There are no available times on " + date
+                    + " or in the following 90 days. Please contact the clinic to reschedule.", null);
+        }
         String body = "Choose a new time on " + date + ".";
         return new AppointmentBookingChatService.Reply(body, Map.of("type", "list", "body", Map.of("text", body),
                 "action", Map.of("button", "Choose time", "sections", List.of(Map.of("title", "Available times", "rows", rows)))));
+    }
+
+    private void refreshDoctorSlots(Doctor doctor) {
+        try {
+            doctorAvailabilityService.generateSlots(doctor.getId());
+        } catch (RuntimeException ex) {
+            log.warn("Could not refresh appointment slots for WhatsApp reschedule: doctorId={} reason={}",
+                    doctor.getId(), ex.getMessage());
+        }
+    }
+
+    private AppointmentBookingChatService.Reply completePatientReschedule(Long organizationId, Patient patient,
+            Doctor doctor, List<String> phoneAliases, Long appointmentId, LocalDate date, LocalTime time) {
+        try {
+            var moved = appointmentService.reschedulePatientAppointment(organizationId, patient.getId(), phoneAliases,
+                    appointmentId, date, time);
+            return new AppointmentBookingChatService.Reply("Your previous appointment has been cancelled, and your new appointment is scheduled for "
+                    + moved.getAppointmentDate() + " at " + moved.getAppointmentTime() + ". Please contact the clinic about payment confirmation.", null);
+        } catch (RuntimeException ex) {
+            log.info("WhatsApp patient reschedule could not complete for appointment {}: {}", appointmentId, ex.getMessage());
+            return new AppointmentBookingChatService.Reply("That time is no longer available or this appointment can't be changed. Please start again and choose another time, or contact the clinic.", null);
+        }
     }
 
     private Map<String, Object> appointmentButtons(String body, Map<String, Object> first, Map<String, Object> second) {

@@ -186,7 +186,7 @@ public class DoctorAvailabilityServiceImpl implements DoctorAvailabilityService 
         int durationMinutes = settings.getAppointmentDurationMinutes();
         int horizonDays = settings.getSlotGenerationHorizonDays();
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = ClinicTime.today();
         LocalDate horizonEnd = today.plusDays(horizonDays);
 
         Map<DayOfWeek, List<DoctorAvailability>> weeklyByDay = availabilityRepo
