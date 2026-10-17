@@ -29,6 +29,9 @@ public interface WhatsAppMessageRepo extends JpaRepository<WhatsAppMessage, Long
 
     Optional<WhatsAppMessage> findByOrganizationIdAndConversationIdAndId(Long organizationId, Long conversationId, Long id);
 
+    Optional<WhatsAppMessage> findTopByOrganizationIdAndConversationIdAndDirectionOrderByCreatedAtDesc(
+            Long organizationId, Long conversationId, MessageDirection direction);
+
     long countByOrganizationIdAndConversationIdAndDirectionAndStatusAndCreatedAtGreaterThanEqual(
             Long organizationId, Long conversationId, MessageDirection direction, MessageStatus status,
             LocalDateTime createdAt);

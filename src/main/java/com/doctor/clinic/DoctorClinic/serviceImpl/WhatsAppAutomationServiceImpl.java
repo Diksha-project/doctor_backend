@@ -17,9 +17,11 @@ import com.doctor.clinic.DoctorClinic.entity.Doctor;
 import com.doctor.clinic.DoctorClinic.entity.Organization;
 import com.doctor.clinic.DoctorClinic.entity.Patient;
 import com.doctor.clinic.DoctorClinic.entity.WhatsAppConversation;
+import com.doctor.clinic.DoctorClinic.entity.WhatsAppMessage;
 import com.doctor.clinic.DoctorClinic.entity.WhatsAppResponseRule;
 import com.doctor.clinic.DoctorClinic.model.AutomationMode;
 import com.doctor.clinic.DoctorClinic.model.ConversationStatus;
+import com.doctor.clinic.DoctorClinic.model.MessageDirection;
 import com.doctor.clinic.DoctorClinic.entity.Appointment;
 import com.doctor.clinic.DoctorClinic.repo.AppointmentRepo;
 import com.doctor.clinic.DoctorClinic.model.Intent;
@@ -28,6 +30,7 @@ import com.doctor.clinic.DoctorClinic.model.ResponseRuleTriggerType;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
 import com.doctor.clinic.DoctorClinic.repo.PatientRepo;
 import com.doctor.clinic.DoctorClinic.repo.WhatsAppConversationRepo;
+import com.doctor.clinic.DoctorClinic.repo.WhatsAppMessageRepo;
 import com.doctor.clinic.DoctorClinic.repo.WhatsAppResponseRuleRepo;
 import com.doctor.clinic.DoctorClinic.repo.DoctorSlotRepo;
 import com.doctor.clinic.DoctorClinic.service.AppointmentService;
@@ -42,6 +45,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
     private final DoctorRepo doctorRepo;
     private final PatientRepo patientRepo;
     private final WhatsAppConversationRepo conversationRepo;
+    private final WhatsAppMessageRepo whatsappMessageRepo;
     private final WhatsAppResponseRuleRepo responseRuleRepo;
     private final WhatsappServiceImpl whatsappService;
     private final GeminiServiceLatest geminiServiceLatest;
@@ -60,6 +64,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
     public WhatsAppAutomationServiceImpl(DoctorRepo doctorRepo,
                                         PatientRepo patientRepo,
                                         WhatsAppConversationRepo conversationRepo,
+                                        WhatsAppMessageRepo whatsappMessageRepo,
                                         WhatsAppResponseRuleRepo responseRuleRepo,
                                         WhatsappServiceImpl whatsappService,
                                         GeminiServiceLatest geminiServiceLatest,
@@ -77,6 +82,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
         this.doctorRepo = doctorRepo;
         this.patientRepo = patientRepo;
         this.conversationRepo = conversationRepo;
+        this.whatsappMessageRepo = whatsappMessageRepo;
         this.responseRuleRepo = responseRuleRepo;
         this.whatsappService = whatsappService;
         this.geminiServiceLatest = geminiServiceLatest;
@@ -122,6 +128,13 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
             WhatsAppConversation conversation = conversationRepo
                     .findByOrganizationIdAndPatientIdAndPhoneNumber(organizationId, patient.getId(), phoneNumber)
                     .orElseGet(() -> conversationService.upsertConversation(organizationId, patient, phoneNumber, doctor));
+
+            selectionId = recoverAppointmentSelectionId(organizationId, doctor, patient, conversation,
+                    messageText, messageType, selectionId);
+            if ("interactive".equalsIgnoreCase(messageType)) {
+                log.info("WhatsApp interactive reply received: orgId={} conversationId={} selectionId={}",
+                        organizationId, conversation.getId(), selectionId);
+            }
 
             if (conversation.getStatus() == ConversationStatus.CLOSED && !conversation.isHumanTakeover()) {
                 conversation = conversationService.reopenConversation(conversation.getId(), organizationId);
@@ -231,6 +244,43 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
         return normalized.contains("appointment")
                 && (normalized.contains("cancel") || normalized.contains("reschedul")
                     || normalized.contains("my appointment") || normalized.contains("upcoming appointment"));
+    }
+
+    private String recoverAppointmentSelectionId(Long organizationId, Doctor doctor, Patient patient,
+                                                  WhatsAppConversation conversation, String replyTitle,
+                                                  String messageType, String selectionId) {
+        if (selectionId != null && (selectionId.startsWith("APPT_CANCEL_")
+                || selectionId.startsWith("APPT_RESCHEDULE_"))) return selectionId;
+        if (!"interactive".equalsIgnoreCase(messageType) || replyTitle == null || replyTitle.isBlank()) return selectionId;
+
+        WhatsAppMessage lastOutbound = whatsappMessageRepo
+                .findTopByOrganizationIdAndConversationIdAndDirectionOrderByCreatedAtDesc(
+                        organizationId, conversation.getId(), MessageDirection.OUTBOUND)
+                .orElse(null);
+        if (lastOutbound == null || lastOutbound.getContent() == null) return selectionId;
+        String prompt = lastOutbound.getContent().toLowerCase(Locale.ROOT);
+        String actionPrefix;
+        if (prompt.contains("choose the appointment you'd like to cancel")) {
+            actionPrefix = "APPT_CANCEL_SELECT_";
+        } else if (prompt.contains("choose the appointment you'd like to reschedule")) {
+            actionPrefix = "APPT_RESCHEDULE_SELECT_";
+        } else {
+            return selectionId;
+        }
+
+        String normalizedReply = replyTitle.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+        List<String> aliases = patientPhoneAliases(patient);
+        return upcomingAppointments(organizationId, patient, doctor, aliases).stream()
+                .filter(appointment -> {
+                    String rowTitle = appointment.getAppointmentDate().format(
+                            java.time.format.DateTimeFormatter.ofPattern("dd MMM")) + " "
+                            + appointment.getAppointmentTime().format(
+                                    java.time.format.DateTimeFormatter.ofPattern("h:mm a"));
+                    return normalizedReply.contains(rowTitle.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", ""));
+                })
+                .findFirst()
+                .map(appointment -> actionPrefix + appointment.getId())
+                .orElse(selectionId);
     }
 
     private String resolveResponse(Doctor doctor, Patient patient, WhatsAppConversation conversation, String messageText,
