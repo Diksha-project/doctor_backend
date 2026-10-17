@@ -221,6 +221,10 @@ public class WebhookController {
 
         String type = message.path("type").asText("unknown");
         String text = extractMessageText(type, message);
+        String selectionId = extractInteractiveId(message);
+        if ("interactive".equalsIgnoreCase(type) || selectionId != null) {
+            System.out.println("WhatsApp interactive callback: type=" + type + ", selectionId=" + selectionId);
+        }
         String contactName = findContactName(value, fromNumber);
         Patient patient = patientProfileService.upsert(doctor.getOrganization(), fromNumber,
                 contactName, null, null, null);
@@ -257,7 +261,7 @@ public class WebhookController {
                 mediaId,
                 mimeType,
                 attachmentName,
-                extractInteractiveId(message));
+                selectionId);
     }
 
     private void processMessageStatus(JsonNode statusNode) {

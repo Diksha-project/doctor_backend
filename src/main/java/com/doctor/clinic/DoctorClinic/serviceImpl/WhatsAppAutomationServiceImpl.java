@@ -130,7 +130,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                     .orElseGet(() -> conversationService.upsertConversation(organizationId, patient, phoneNumber, doctor));
 
             selectionId = recoverAppointmentSelectionId(organizationId, doctor, patient, conversation,
-                    messageText, messageType, selectionId);
+                    messageText, selectionId);
             if ("interactive".equalsIgnoreCase(messageType)) {
                 log.info("WhatsApp interactive reply received: orgId={} conversationId={} selectionId={}",
                         organizationId, conversation.getId(), selectionId);
@@ -248,10 +248,10 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
 
     private String recoverAppointmentSelectionId(Long organizationId, Doctor doctor, Patient patient,
                                                   WhatsAppConversation conversation, String replyTitle,
-                                                  String messageType, String selectionId) {
+                                                  String selectionId) {
         if (selectionId != null && (selectionId.startsWith("APPT_CANCEL_")
                 || selectionId.startsWith("APPT_RESCHEDULE_"))) return selectionId;
-        if (!"interactive".equalsIgnoreCase(messageType) || replyTitle == null || replyTitle.isBlank()) return selectionId;
+        if (replyTitle == null || replyTitle.isBlank()) return selectionId;
 
         WhatsAppMessage lastOutbound = whatsappMessageRepo
                 .findTopByOrganizationIdAndConversationIdAndDirectionOrderByCreatedAtDesc(
@@ -270,7 +270,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
 
         String normalizedReply = replyTitle.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
         List<String> aliases = patientPhoneAliases(patient);
-        return upcomingAppointments(organizationId, patient, doctor, aliases).stream()
+        String recovered = upcomingAppointments(organizationId, patient, doctor, aliases).stream()
                 .filter(appointment -> {
                     String rowTitle = appointment.getAppointmentDate().format(
                             java.time.format.DateTimeFormatter.ofPattern("dd MMM")) + " "
@@ -281,6 +281,11 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                 .findFirst()
                 .map(appointment -> actionPrefix + appointment.getId())
                 .orElse(selectionId);
+        if (!java.util.Objects.equals(recovered, selectionId)) {
+            log.warn("Recovered missing appointment list selection from reply title: conversationId={} selectionId={}",
+                    conversation.getId(), recovered);
+        }
+        return recovered;
     }
 
     private String resolveResponse(Doctor doctor, Patient patient, WhatsAppConversation conversation, String messageText,
