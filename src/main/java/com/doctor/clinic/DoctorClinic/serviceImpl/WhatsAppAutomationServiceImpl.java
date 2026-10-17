@@ -576,6 +576,12 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
             if (appointments.isEmpty()) return Optional.of(new AppointmentBookingChatService.Reply(
                     "You don't have an upcoming appointment with Dr. " + doctor.getFullName() + " to "
                             + (cancelRequested ? "cancel." : "reschedule."), null));
+            if (rescheduleRequested && appointments.size() == 1) {
+                refreshDoctorSlots(doctor);
+                log.info("Starting WhatsApp reschedule directly for the patient's only upcoming appointment: conversationId={} appointmentId={}",
+                        conversation.getId(), appointments.get(0).getId());
+                return Optional.of(rescheduleDateChoices(appointments.get(0), doctor));
+            }
             String action = cancelRequested ? "cancel" : "reschedule";
             String body = "Choose the appointment you'd like to " + action + ".";
             List<Map<String, Object>> rows = appointments.stream().limit(10).map(appointment -> menuRow(
