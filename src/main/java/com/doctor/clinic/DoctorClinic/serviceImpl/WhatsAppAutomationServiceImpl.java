@@ -577,7 +577,7 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
             if (appointment == null) return Optional.of(new AppointmentBookingChatService.Reply("I couldn't find that upcoming appointment. Please start again.", null));
             refreshDoctorSlots(doctor);
             try {
-                return Optional.of(rescheduleTimeChoices(appointment, doctor, date));
+                return Optional.of(rescheduleSlotChoices(appointment, doctor, 0));
             } catch (RuntimeException ex) {
                 log.error("Failed to load reschedule times: conversationId={} appointmentId={} date={}",
                         conversation.getId(), id, date, ex);
@@ -652,66 +652,28 @@ public class WhatsAppAutomationServiceImpl implements WhatsAppAutomationService 
                         (com.doctor.clinic.DoctorClinic.entity.DoctorSlot slot) -> slot.getSlotDate())
                         .thenComparing(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::getStartTime))
                 .toList();
+        if (availableSlots.isEmpty()) return new AppointmentBookingChatService.Reply(
+                "There are no available appointment times in the next 90 days. Please contact the clinic to reschedule.", null);
+        LocalDate nextAvailableDate = availableSlots.get(0).getSlotDate();
+        List<com.doctor.clinic.DoctorClinic.entity.DoctorSlot> nextDaySlots = availableSlots.stream()
+                .filter(slot -> slot.getSlotDate().equals(nextAvailableDate)).toList();
+        if (offset >= nextDaySlots.size()) offset = 0;
         if (offset >= availableSlots.size()) offset = 0;
         int pageSize = 10;
-        List<com.doctor.clinic.DoctorClinic.entity.DoctorSlot> page = availableSlots.stream()
+        List<com.doctor.clinic.DoctorClinic.entity.DoctorSlot> page = nextDaySlots.stream()
                 .skip(offset).limit(pageSize).toList();
         List<Map<String, Object>> rows = new java.util.ArrayList<>(page.stream().map(slot -> menuRow(
                 "APPT_RESCHEDULE_TIME_" + appointment.getId() + "_" + slot.getSlotDate() + "_" + slot.getStartTime(),
-                slot.getSlotDate().format(java.time.format.DateTimeFormatter.ofPattern("EEE dd MMM")) + " "
-                        + slot.getStartTime().format(java.time.format.DateTimeFormatter.ofPattern("h:mm a")),
-                "Available with Dr. " + doctor.getFullName())).toList());
-        if (offset + pageSize < availableSlots.size()) {
+                slot.getStartTime().format(java.time.format.DateTimeFormatter.ofPattern("h:mm a")),
+                "Available on " + slot.getSlotDate().format(java.time.format.DateTimeFormatter.ofPattern("EEE, dd MMM"))))
+                .toList());
+        if (offset + pageSize < nextDaySlots.size()) {
             rows.set(pageSize - 1, menuRow("APPT_RESCHEDULE_MORE_" + appointment.getId() + "_" + (offset + pageSize),
-                    "More available times", "See more dates and times"));
+                    "More times", "See more times on this date"));
         }
-        if (rows.isEmpty()) return new AppointmentBookingChatService.Reply(
-                "There are no available appointment times in the next 90 days. Please contact the clinic to reschedule.", null);
-        String body = "Choose a new date and time for your appointment with Dr. " + doctor.getFullName() + ".";
-        return new AppointmentBookingChatService.Reply(body, Map.of("type", "list", "body", Map.of("text", body),
-                "action", Map.of("button", "Choose a new time", "sections", List.of(Map.of("title", "Available dates and times", "rows", rows)))));
-    }
-
-    private AppointmentBookingChatService.Reply rescheduleDateChoices(Appointment appointment, Doctor doctor) {
-        java.time.LocalDate today = ClinicTime.today();
-        java.time.LocalTime now = ClinicTime.now();
-        java.util.TreeSet<java.time.LocalDate> dates = new java.util.TreeSet<>();
-        doctorSlotRepo.findByDoctorIdAndSlotDateBetweenAndIsAvailableTrue(doctor.getId(), today, today.plusDays(90))
-                .stream().filter(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::hasAvailability)
-                .filter(slot -> slot.getSlotDate().isAfter(today) || slot.getStartTime().isAfter(now))
-                .map(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::getSlotDate)
-                .forEach(dates::add);
-        if (dates.isEmpty()) return new AppointmentBookingChatService.Reply("There are no available appointment times in the next 90 days. Please contact the clinic to reschedule.", null);
-        List<Map<String, Object>> rows = dates.stream().limit(10).map(date -> menuRow(
-                "APPT_RESCHEDULE_DATE_" + appointment.getId() + "_" + date,
-                date.format(java.time.format.DateTimeFormatter.ofPattern("EEE, dd MMM")), "Available appointment times")).toList();
-        String body = "Choose a new date for your appointment with Dr. " + doctor.getFullName() + ".";
-        return new AppointmentBookingChatService.Reply(body, Map.of("type", "list", "body", Map.of("text", body),
-                "action", Map.of("button", "Choose date", "sections", List.of(Map.of("title", "Available dates", "rows", rows)))));
-    }
-
-    private AppointmentBookingChatService.Reply rescheduleTimeChoices(Appointment appointment, Doctor doctor, java.time.LocalDate date) {
-        java.time.LocalDate today = ClinicTime.today();
-        java.time.LocalTime now = ClinicTime.now();
-        List<Map<String, Object>> rows = doctorSlotRepo.findByDoctorIdAndSlotDateAndIsAvailableTrue(doctor.getId(), date).stream()
-                .filter(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::hasAvailability)
-                .filter(slot -> date.isAfter(today) || slot.getStartTime().isAfter(now))
-                .filter(slot -> !date.equals(appointment.getAppointmentDate()) || !slot.getStartTime().equals(appointment.getAppointmentTime()))
-                .sorted(java.util.Comparator.comparing(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::getStartTime))
-                .limit(10).map(slot -> menuRow("APPT_RESCHEDULE_TIME_" + appointment.getId() + "_" + date + "_" + slot.getStartTime(),
-                        slot.getStartTime().format(java.time.format.DateTimeFormatter.ofPattern("h:mm a")), "Available" )).toList();
-        if (rows.isEmpty()) {
-            java.time.LocalDate nextAvailableDate = doctorSlotRepo
-                    .findByDoctorIdAndSlotDateBetweenAndIsAvailableTrue(doctor.getId(), date.plusDays(1), date.plusDays(90))
-                    .stream().filter(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::hasAvailability)
-                    .filter(slot -> slot.getSlotDate().isAfter(today) || slot.getStartTime().isAfter(now))
-                    .map(com.doctor.clinic.DoctorClinic.entity.DoctorSlot::getSlotDate)
-                    .min(java.util.Comparator.naturalOrder()).orElse(null);
-            if (nextAvailableDate != null) return rescheduleTimeChoices(appointment, doctor, nextAvailableDate);
-            return new AppointmentBookingChatService.Reply("There are no available times on " + date
-                    + " or in the following 90 days. Please contact the clinic to reschedule.", null);
-        }
-        String body = "Choose a new time on " + date + ".";
+        String body = "The next available date is " + nextAvailableDate.format(
+                java.time.format.DateTimeFormatter.ofPattern("EEE, dd MMM"))
+                + ". Choose a time to reschedule your appointment with Dr. " + doctor.getFullName() + ".";
         return new AppointmentBookingChatService.Reply(body, Map.of("type", "list", "body", Map.of("text", body),
                 "action", Map.of("button", "Choose time", "sections", List.of(Map.of("title", "Available times", "rows", rows)))));
     }
