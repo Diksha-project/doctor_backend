@@ -17,6 +17,7 @@ import jakarta.persistence.LockModeType;
 
 @Repository
 public interface AppointmentRepo extends JpaRepository<Appointment, Long> {
+    boolean existsByOrganizationIdAndDoctorIdAndPatientId(Long organizationId, Long doctorId, Long patientId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT a FROM Appointment a LEFT JOIN a.patient p WHERE a.id = :appointmentId "

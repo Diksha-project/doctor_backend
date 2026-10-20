@@ -7,6 +7,9 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public enum PermissionCode {
+    PRESCRIPTIONS_VIEW("PRESCRIPTIONS", "VIEW", "View prescriptions"),
+    PRESCRIPTIONS_EDIT("PRESCRIPTIONS", "EDIT", "Create and edit prescription drafts"),
+    PRESCRIPTIONS_FINALIZE("PRESCRIPTIONS", "FINALIZE", "Finalize own prescriptions"),
     DASHBOARD_VIEW("DASHBOARD", "VIEW", "View dashboard"),
     PATIENTS_VIEW("PATIENTS", "VIEW", "View patients"),
     PATIENTS_CREATE("PATIENTS", "CREATE", "Create patients"),
