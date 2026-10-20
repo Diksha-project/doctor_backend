@@ -39,17 +39,21 @@ The A4 print utility fetches the authorized finalized record again, uses text no
 
 ## Not implemented / release blockers
 
-This is an initial implementation, not the complete production-ready voice prescription feature.
+This is an initial implementation, not the complete production-ready prescription delivery feature.
 
 - Hosted or browser speech recognition, recording consent, language controls and provider privacy/retention approval.
-- Structured AI extraction with source evidence, uncertainty flags and clinician review of proposed changes.
+- Hosted AI extraction remains disabled until the organization explicitly approves the provider and clinical-data processing terms.
 - Server-generated Unicode PDF files and private document storage.
 - WhatsApp document upload/send integration, verified-recipient confirmation, messaging-window/template checks, retry state and delivery callbacks.
 - Appointment/patient-profile entry links, patient-scoped history search, void workflow and persistent draft-edit audit trail.
 - End-to-end browser verification, migration verification against PostgreSQL, clinical validation policy review and production compliance review.
 
-The corresponding unfinished integrations are disabled in the UI. No simulated voice, AI, PDF delivery or WhatsApp success is returned.
-No audio is captured or retained by this implementation, and clinical content is not submitted to an AI provider.
+Browser speech recognition supports English, Hindi and Hinglish. No audio file is retained by the application. The authenticated
+`POST /api/prescriptions/extract` endpoint performs conservative Java-based extraction for explicitly dictated medicine fields,
+tests, advice, follow-up and labelled clinical sections. It preserves existing manual fields, returns review warnings for missing
+medicine instructions, and never saves or finalizes the result automatically. Clinical transcripts are not submitted to an AI provider.
+
+The remaining unfinished PDF delivery and WhatsApp integrations are disabled in the UI. No simulated delivery success is returned.
 No external credentials or production settings were added or changed. Existing Gemini and WhatsApp services were inspected but not reused for clinical data without a dedicated, approved integration.
 
 ## Verification
