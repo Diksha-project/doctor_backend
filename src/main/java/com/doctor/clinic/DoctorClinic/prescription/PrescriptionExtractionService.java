@@ -61,6 +61,10 @@ public class PrescriptionExtractionService {
             if (sentence.isBlank()) continue;
 
             String value;
+            if (complaints.isBlank() && !(value = complaintInstruction(sentence)).isBlank()) {
+                complaints = value;
+                continue;
+            }
             if (complaints.isBlank() && !(value = labelled(sentence, "(?:chief\\s+)?complaints?")).isBlank()) {
                 complaints = value;
                 continue;
@@ -78,7 +82,9 @@ public class PrescriptionExtractionService {
                 continue;
             }
 
-            Matcher medicineMatch = MEDICINE.matcher(sentence);
+            String medicineSentence = sentence.replaceFirst(
+                    "(?iu)^medicine\\s+(?:one|two|three|four|five|1|2|3|4|5)\\s*[:\\-]\\s*", "");
+            Matcher medicineMatch = MEDICINE.matcher(medicineSentence);
             if (medicineMatch.matches()) {
                 String details = clean(medicineMatch.group(3));
                 var medicine = new PrescriptionContent.Medication(
@@ -87,7 +93,7 @@ public class PrescriptionExtractionService {
                         first(details, "(?iu)\\b(?:one|two|half|quarter|एक|दो|आधी|\\d+(?:\\.\\d+)?)\\s*(?:tablets?|capsules?|spoons?|drops?|puffs?|गोली|कैप्सूल)\\b"),
                         first(details, "(?iu)\\b(?:oral|orally|topical|topically|intravenous|intramuscular|sublingual|by mouth|मुंह से)\\b"),
                         first(details, "(?iu)\\b(?:once daily|twice daily|thrice daily|once a day|two times a day|three times a day|every \\d+ hours?|दिन में (?:एक|दो|तीन|\\d+) बार|सुबह शाम)\\b"),
-                        first(details, "(?iu)\\b(?:before food|after food|with food|empty stomach|खाने से पहले|खाने के बाद|खाने के साथ|खाली पेट)\\b"),
+                        first(details, "(?iu)\\b(?:before food|after food|with food|empty stomach|at night|in the morning|at bedtime|खाने से पहले|खाने के बाद|खाने के साथ|खाली पेट|रात में|सुबह)\\b"),
                         first(details, "(?iu)\\b(?:for\\s+)?(?:one|two|three|four|five|six|seven|\\d+)\\s*(?:days?|weeks?|months?|दिन|हफ्ते|सप्ताह|महीने)\\b"),
                         first(details, "(?iu)\\b(?:quantity|qty)\\s*[:\\-]?\\s*\\d+\\b"), "");
                 if (!medicines.contains(medicine)) medicines.add(medicine);
@@ -95,19 +101,22 @@ public class PrescriptionExtractionService {
                 continue;
             }
 
+            String investigationLabel = labelled(sentence, "(?:investigations?|tests?)");
+            if (!investigationLabel.isBlank()) {
+                addInvestigations(investigations, investigationLabel);
+                continue;
+            }
             Matcher testsMatch = TESTS.matcher(sentence);
             if (testsMatch.find()) {
                 String names = testsMatch.group(1).replaceFirst("(?iu)^(?:order|do|get|please|कराएं|करवाएं)\\s+", "").trim();
-                for (String name : names.split("(?iu)\\s*(?:,|&|/|\\band\\b|और)\\s*")) {
-                    String testName = clean(name);
-                    if (!testName.isBlank()) {
-                        var test = new PrescriptionContent.Investigation(testName, "", "");
-                        if (!investigations.contains(test)) investigations.add(test);
-                    }
-                }
+                addInvestigations(investigations, names);
                 continue;
             }
 
+            if (advice.isBlank() && !(value = labelled(sentence, "advice")).isBlank()) {
+                advice = value;
+                continue;
+            }
             if (followUp.isBlank() && contains(sentence, "follow up", "follow-up", "फॉलो अप", "फॉलो-अप")) {
                 followUp = sentence;
                 continue;
@@ -150,6 +159,23 @@ public class PrescriptionExtractionService {
     private String labelled(String sentence, String labelPattern) {
         Matcher match = Pattern.compile("(?iu)^" + labelPattern + "\\s*[:\\-]\\s*(.+)$").matcher(sentence);
         return match.matches() ? clean(match.group(1)) : "";
+    }
+
+    private String complaintInstruction(String sentence) {
+        Matcher match = Pattern.compile(
+                "(?iu)^complaints?\\s+(?:mein|me|में)\\s+(.+?)\\s+(?:likhiye|likhen|लिखिए|लिखें)$")
+                .matcher(sentence);
+        return match.matches() ? clean(match.group(1)) : "";
+    }
+
+    private void addInvestigations(List<PrescriptionContent.Investigation> investigations, String names) {
+        for (String name : names.split("(?iu)\\s*(?:,|&|/|\\band\\b|और)\\s*")) {
+            String testName = clean(name);
+            if (!testName.isBlank()) {
+                var test = new PrescriptionContent.Investigation(testName, "", "");
+                if (!investigations.contains(test)) investigations.add(test);
+            }
+        }
     }
 
     private String first(String source, String regex) {
