@@ -116,6 +116,30 @@ public class Organization {
 	@Builder.Default
 	private Boolean appointmentAutomationEnabled = true;
 
+	@Column(name = "clinic_address", length = 1000)
+	private String clinicAddress;
+
+	@Column(name = "clinic_phone", length = 40)
+	private String clinicPhone;
+
+	@Column(name = "clinic_email", length = 254)
+	private String clinicEmail;
+
+	@Column(name = "clinic_website", length = 500)
+	private String clinicWebsite;
+
+	@Column(name = "clinic_tagline", length = 200)
+	private String clinicTagline;
+
+	@Column(name = "logo_object_key", length = 1000)
+	private String logoObjectKey;
+
+	@Column(name = "logo_content_type", length = 100)
+	private String logoContentType;
+
+	@Column(name = "logo_file_name", length = 255)
+	private String logoFileName;
+
 	// Relationships
 	@OneToMany(mappedBy = "organization", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
 	@Builder.Default

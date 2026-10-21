@@ -20,6 +20,7 @@ public class Prescription {
     @Column(nullable = false) private String status = "DRAFT";
     @Column(nullable = false, columnDefinition = "TEXT") private String content;
     @Column(columnDefinition = "TEXT") private String identitySnapshot;
+    @Column(columnDefinition = "TEXT") private String templateSnapshot;
     @Column(nullable = false) private Instant createdAt = Instant.now();
     @Column(nullable = false) private Instant updatedAt = Instant.now();
     private Instant finalizedAt;

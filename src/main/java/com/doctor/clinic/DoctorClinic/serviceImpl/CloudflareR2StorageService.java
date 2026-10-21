@@ -17,6 +17,7 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 /** Stores private medical-report objects in Cloudflare R2 through its S3-compatible API. */
@@ -57,11 +58,34 @@ public class CloudflareR2StorageService {
         return new StoredFile(objectKey, contentType, safeName, bytes.length);
     }
 
+    public StoredFile storeOrganizationLogo(Long organizationId, byte[] bytes, String contentType,
+                                             String originalFileName) {
+        if (!isConfigured()) throw new IllegalStateException("Cloudflare R2 storage is not configured");
+        if (bytes == null || bytes.length == 0) throw new IllegalArgumentException("Logo is empty");
+        if (bytes.length > 2 * 1024 * 1024) throw new IllegalArgumentException("Logo must be 2 MB or smaller");
+        String extension = extensionFor(contentType);
+        if (".pdf".equals(extension)) throw new IllegalArgumentException("Logo must be PNG, JPEG, or WebP");
+        String objectKey = "organizations/" + organizationId + "/branding/" + UUID.randomUUID() + extension;
+        String safeName = sanitizeFileName(originalFileName, extension);
+        PutObjectRequest request = PutObjectRequest.builder().bucket(bucket).key(objectKey)
+                .contentType(contentType).contentLength((long) bytes.length)
+                .metadata(Map.of("document-kind", "organization-logo", "organization-id", organizationId.toString()))
+                .build();
+        client().putObject(request, RequestBody.fromBytes(bytes));
+        return new StoredFile(objectKey, contentType, safeName, bytes.length);
+    }
+
     public FileContent read(String objectKey, String contentType, String fileName) {
         if (!isConfigured()) throw new IllegalStateException("Cloudflare R2 storage is not configured");
         byte[] bytes = client().getObjectAsBytes(GetObjectRequest.builder()
                 .bucket(bucket).key(objectKey).build()).asByteArray();
         return new FileContent(bytes, contentType, fileName);
+    }
+
+    public void delete(String objectKey) {
+        if (objectKey == null || objectKey.isBlank()) return;
+        if (!isConfigured()) throw new IllegalStateException("Cloudflare R2 storage is not configured");
+        client().deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(objectKey).build());
     }
 
     private S3Client client() {

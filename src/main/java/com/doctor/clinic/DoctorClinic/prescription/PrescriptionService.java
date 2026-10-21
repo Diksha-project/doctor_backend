@@ -25,11 +25,12 @@ public class PrescriptionService {
     private final AppointmentRepo appointments;
     private final AuthorizationService authorization;
     private final ObjectMapper mapper;
+    private final PrescriptionDocumentSettingsService documentSettings;
 
     public record Draft(UUID id, long version, Long doctorId, Long patientId, Long appointmentId,
             UUID replacesId, PrescriptionContent content) {}
     public record View(UUID id, long version, Long doctorId, Long patientId, Long appointmentId,
-            UUID replacesId, String status, PrescriptionContent content, Map<String, Object> identity,
+            UUID replacesId, String status, PrescriptionContent content, Map<String, Object> identity, Map<String, Object> documentTemplate,
             Instant createdAt, Instant updatedAt, Instant finalizedAt) {}
 
     @Transactional(readOnly = true)
@@ -84,8 +85,12 @@ public class PrescriptionService {
             prescription.setId(input.id()); prescription.setOrganizationId(user.organizationId());
             prescription.setDoctorId(input.doctorId()); prescription.setPatientId(input.patientId());
             prescription.setAppointmentId(input.appointmentId()); prescription.setReplacesId(input.replacesId());
+            prescription.setTemplateSnapshot(json(documentSettings.resolveSnapshot(user.organizationId(), input.doctorId())));
         }
         prescription.setContent(content); prescription.setUpdatedAt(Instant.now());
+        if (prescription.getTemplateSnapshot() == null) {
+            prescription.setTemplateSnapshot(json(documentSettings.resolveSnapshot(user.organizationId(), input.doctorId())));
+        }
         var identity = new LinkedHashMap<String, Object>();
         identity.put("patientName", patient.getFullName()); identity.put("age", patient.getAge()); identity.put("gender", patient.getGender());
         identity.put("doctorName", doctor.getFirstName() + " " + (doctor.getLastName() == null ? "" : doctor.getLastName()));
@@ -120,6 +125,7 @@ public class PrescriptionService {
     private View view(Prescription p) {
         return new View(p.getId(), p.getVersion(), p.getDoctorId(), p.getPatientId(), p.getAppointmentId(), p.getReplacesId(),
                 p.getStatus(), read(p.getContent(), PrescriptionContent.class), read(p.getIdentitySnapshot(), Map.class),
+                p.getTemplateSnapshot() == null ? Map.of() : read(p.getTemplateSnapshot(), Map.class),
                 p.getCreatedAt(), p.getUpdatedAt(), p.getFinalizedAt());
     }
     private String json(Object value) { try { return mapper.writeValueAsString(value); } catch (JsonProcessingException e) { throw new IllegalStateException("Cannot serialize prescription", e); } }
