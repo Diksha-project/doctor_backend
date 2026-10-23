@@ -18,12 +18,10 @@ public class DemoRequest {
     private String organizationName;
     @Column(nullable = false, length = 120)
     private String contactName;
-    @Column(nullable = false, length = 254)
+    @Column(length = 254)
     private String email;
     @Column(nullable = false, length = 30)
     private String phone;
-    @Column(nullable = false, length = 40)
-    private String organizationType;
     @Column(length = 120)
     private String city;
     private Integer expectedDoctors;

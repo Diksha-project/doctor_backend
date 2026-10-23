@@ -3,7 +3,10 @@ package com.doctor.clinic.DoctorClinic.controller;
 import com.doctor.clinic.DoctorClinic.entity.*;
 import com.doctor.clinic.DoctorClinic.model.SubscriptionStatus;
 import com.doctor.clinic.DoctorClinic.repo.*;
+import com.doctor.clinic.DoctorClinic.request.UpdateDemoRequestRequest;
+import com.doctor.clinic.DoctorClinic.response.DemoRequestResponse;
 import com.doctor.clinic.DoctorClinic.security.PlatformAdminAccessService;
+import com.doctor.clinic.DoctorClinic.service.DemoRequestService;
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -19,12 +22,11 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/platform")
 @RequiredArgsConstructor
 public class PlatformAdminController {
-    private static final Set<String> DEMO_STATUSES = Set.of("NEW", "CONTACTED", "SCHEDULED", "CONVERTED", "CLOSED");
     private static final Set<String> PLANS = Set.of("BASIC", "PROFESSIONAL", "ENTERPRISE");
     private static final Set<String> BILLING_CYCLES = Set.of("MONTHLY", "YEARLY");
 
     private final PlatformAdminAccessService access;
-    private final DemoRequestRepo demoRequests;
+    private final DemoRequestService demoRequestService;
     private final OrganizationRepo organizations;
     private final DoctorRepo doctors;
     private final SubscriptionRepo subscriptions;
@@ -32,10 +34,6 @@ public class PlatformAdminController {
 
     public record Overview(long organizations, long activeOrganizations, long doctors, long newDemoRequests,
             long activeSubscriptions) {}
-    public record DemoView(Long id, String organizationName, String contactName, String email, String phone,
-            String organizationType, String city, Integer expectedDoctors, String message, String status,
-            String internalNotes, Instant requestedAt, Instant updatedAt) {}
-    public record DemoUpdate(@NotBlank String status, @Size(max = 2000) String internalNotes) {}
     public record OrganizationView(Long id, String name, String type, String ownerName, String email, String phone,
             boolean active, String subscriptionStatus, Integer maxDoctors, long doctors, LocalDate trialEndsAt,
             LocalDateTime createdAt) {}
@@ -53,25 +51,20 @@ public class PlatformAdminController {
     public Overview overview() {
         access.requirePlatformAdmin();
         return new Overview(organizations.count(), organizations.countByIsActiveTrue(), doctors.count(),
-                demoRequests.countByStatus("NEW"), subscriptions.countByStatus("ACTIVE"));
+                demoRequestService.countByStatus("NEW"), subscriptions.countByStatus("ACTIVE"));
     }
 
     @GetMapping("/demo-requests")
-    public List<DemoView> demoRequests() {
+    public List<DemoRequestResponse> demoRequests() {
         access.requirePlatformAdmin();
-        return demoRequests.findAllByOrderByRequestedAtDesc().stream().map(this::demoView).toList();
+        return demoRequestService.listAll();
     }
 
     @PutMapping("/demo-requests/{id}")
-    @Transactional
-    public DemoView updateDemo(@PathVariable Long id, @Valid @RequestBody DemoUpdate input) {
+    public DemoRequestResponse updateDemo(@PathVariable Long id,
+                                          @Valid @RequestBody UpdateDemoRequestRequest input) {
         access.requirePlatformAdmin();
-        String status = input.status().trim().toUpperCase(Locale.ROOT);
-        if (!DEMO_STATUSES.contains(status)) bad("Unsupported demo request status");
-        DemoRequest request = demoRequests.findById(id).orElseThrow(this::missing);
-        request.setStatus(status);
-        request.setInternalNotes(clean(input.internalNotes()));
-        return demoView(demoRequests.save(request));
+        return demoRequestService.update(id, input);
     }
 
     @GetMapping("/organizations")
@@ -137,11 +130,9 @@ public class PlatformAdminController {
         return subscriptionView(subscriptions.save(subscription));
     }
 
-    private DemoView demoView(DemoRequest value) { return new DemoView(value.getId(), value.getOrganizationName(), value.getContactName(), value.getEmail(), value.getPhone(), value.getOrganizationType(), value.getCity(), value.getExpectedDoctors(), value.getMessage(), value.getStatus(), value.getInternalNotes(), value.getRequestedAt(), value.getUpdatedAt()); }
     private OrganizationView organizationView(Organization value) { return new OrganizationView(value.getId(), value.getOrganizationName(), value.getOrganizationType().name(), value.getOwnerFullName(), value.getOwnerEmail(), value.getOwnerMobile(), Boolean.TRUE.equals(value.getIsActive()), value.getSubscriptionStatus().name(), value.getMaxDoctors(), doctors.countByOrganizationId(value.getId()), value.getTrialEndsAt(), value.getCreatedAt()); }
     private DoctorView doctorView(Doctor value) { boolean enabled = users.findByDoctorId(value.getId()).map(AppUser::isActive).orElse("ACTIVE".equals(value.getStatus())); return new DoctorView(value.getId(), value.getOrganization().getId(), value.getOrganization().getOrganizationName(), value.getFullName(), value.getEmail(), value.getPhoneNumber(), value.getSpecialization(), value.getStatus(), enabled); }
     private SubscriptionView subscriptionView(Subscription value) { return new SubscriptionView(value.getId(), value.getOrganization().getId(), value.getPlanType(), value.getBillingCycle(), value.getStatus(), value.getStartDate(), value.getEndDate(), value.getTrialEndDate(), value.getMaxDoctors(), value.getAmount(), value.getAutoRenew()); }
-    private String clean(String value) { return value == null ? null : value.trim(); }
     private ResponseStatusException missing() { return new ResponseStatusException(HttpStatus.NOT_FOUND, "Resource not found"); }
     private ResponseStatusException bad(String message) { return new ResponseStatusException(HttpStatus.BAD_REQUEST, message); }
 }
