@@ -73,5 +73,7 @@ public interface AppUserRepo extends JpaRepository<AppUser, Long> {
 
     Optional<AppUser> findByIdAndOrganizationId(Long id, Long organizationId);
 
+    Optional<AppUser> findByDoctorId(Long doctorId);
+
     boolean existsByEmailIgnoreCase(String email);
 }

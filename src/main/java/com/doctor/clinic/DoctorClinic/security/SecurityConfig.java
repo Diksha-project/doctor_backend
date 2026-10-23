@@ -29,6 +29,7 @@ private final JwtAuthenticationFilter jwtAuthenticationFilter;
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/api/auth/login").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/public/demo-requests").permitAll()
                 .requestMatchers("/org/register").permitAll()
                 .requestMatchers("/webhook/whatsapp").permitAll()
                 .requestMatchers("/webhook/health").permitAll()

@@ -58,6 +58,7 @@ public class PrescriptionDocumentSettingsService {
     public ClinicProfile uploadLogo(MultipartFile file) {
         var user = authorization.requirePermission("ORGANIZATION:EDIT");
         if (file == null || file.isEmpty()) bad("Logo file is required");
+        if (file.getSize() > 1024 * 1024) bad("Logo must be no larger than 1 MB");
         String type = Optional.ofNullable(file.getContentType()).orElse("").toLowerCase(Locale.ROOT);
         if (!Set.of("image/png", "image/jpeg", "image/webp").contains(type)) bad("Logo must be PNG, JPEG, or WebP");
         try {
@@ -183,12 +184,21 @@ public class PrescriptionDocumentSettingsService {
         if (footer instanceof String text && text.length() > 1000) bad("Footer text must be 1000 characters or fewer");
         Object margins = input.configuration().get("pageMarginMm");
         if (margins instanceof Number n && (n.intValue() < 8 || n.intValue() > 30)) bad("Page margin must be between 8 and 30 mm");
+        Object fontSize = input.configuration().get("fontSize");
+        if (fontSize instanceof Number n && (n.intValue() < 9 || n.intValue() > 14)) bad("Font size must be between 9 and 14 pt");
+        validateChoice(input.configuration(), "headerAlignment", Set.of("LEFT", "CENTER", "RIGHT"));
+        validateChoice(input.configuration(), "pageSize", Set.of("A4", "LETTER"));
+        validateColor(input.configuration(), "primaryColor");
+        validateColor(input.configuration(), "secondaryColor");
         json(input.configuration());
     }
     private Map<String, Object> safeDefaults() {
         Map<String, Object> defaults = new LinkedHashMap<>();
         defaults.put("headerAlignment", "LEFT"); defaults.put("logoSize", "MEDIUM");
         defaults.put("fontFamily", "Arial"); defaults.put("fontSize", 11); defaults.put("pageMarginMm", 15);
+        defaults.put("pageSize", "A4"); defaults.put("primaryColor", "#2563EB"); defaults.put("secondaryColor", "#14B8A6");
+        defaults.put("showClinicLogo", true); defaults.put("showClinicName", true);
+        defaults.put("showContactDetails", true); defaults.put("showDoctorDetails", true); defaults.put("showDividerLine", true);
         defaults.put("showDoctorPhoto", false); defaults.put("showSpecialty", true);
         defaults.put("showWorkingHours", false); defaults.put("showDisclaimer", true);
         defaults.put("showPrescriptionMeta", true); defaults.put("showPageNumbers", true);
@@ -201,6 +211,8 @@ public class PrescriptionDocumentSettingsService {
     private String uniqueCopyName(String source) { return (source.length() > 110 ? source.substring(0, 110) : source) + " Copy"; }
     private void deleteLogoQuietly(String objectKey) { try { storage.delete(objectKey); } catch (RuntimeException ignored) { /* Do not undo a successful profile update when stale-asset cleanup fails. */ } }
     private String clean(String value, int max, boolean required, String label) { String clean = value == null ? "" : value.trim(); if (required && clean.isEmpty()) bad(label + " is required"); if (clean.length() > max) bad(label + " is too long"); if (clean.indexOf('<') >= 0 || clean.indexOf('>') >= 0) bad(label + " contains unsupported characters"); return clean; }
+    private void validateChoice(Map<String, Object> configuration, String key, Set<String> supported) { Object value = configuration.get(key); if (value != null && !supported.contains(String.valueOf(value))) bad("Unsupported " + key); }
+    private void validateColor(Map<String, Object> configuration, String key) { Object value = configuration.get(key); if (value != null && !String.valueOf(value).matches("#[0-9A-Fa-f]{6}")) bad(key + " must be a valid hex color"); }
     private String json(Object value) { try { return mapper.writeValueAsString(value); } catch (JsonProcessingException e) { throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Configuration is invalid"); } }
     private Map<String, Object> read(String value) { try { return mapper.readValue(value, new TypeReference<>() {}); } catch (JsonProcessingException e) { throw new IllegalStateException("Stored template is invalid", e); } }
     private ResponseStatusException missing() { return new ResponseStatusException(HttpStatus.NOT_FOUND, "Prescription setting not found"); }

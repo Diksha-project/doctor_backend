@@ -11,6 +11,8 @@ import com.doctor.clinic.DoctorClinic.entity.Organization;
 
 @Repository
 public interface OrganizationRepo extends JpaRepository<Organization, Long> {
+	java.util.List<Organization> findAllByOrderByCreatedAtDesc();
+	long countByIsActiveTrue();
 	
 	Optional<Organization> findByOrganizationName(String organizationName);
 
