@@ -75,6 +75,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	                if (jwtUtil.isTokenValid(token)) {
 	                    String email = jwtUtil.extractEmail(token);
 	                    CurrentUser currentUser = currentUserService.loadByEmail(email);
+
+                        if (currentUser.isPlatformAdmin() && !path.startsWith("/api/platform/")) {
+                            log.warn("Blocked platform administrator from clinic route: {}", path);
+                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            response.setContentType("application/json");
+                            response.getWriter().write("{\"message\":\"Platform administrators must use the platform admin portal\"}");
+                            return;
+                        }
 	                    
 	                    log.info("Valid token for user: {}", email);
 	                    

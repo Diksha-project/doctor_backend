@@ -5,21 +5,19 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.doctor.clinic.DoctorClinic.model.ResourceScope;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
 class PlatformAdminAccessServiceTest {
     private final CurrentUser allowed = new CurrentUser(1L, 5L, null, "ops@archster.test", "Ops",
-            Set.of("SUPER_ADMIN"), Set.of(), Set.of(ResourceScope.ORGANIZATION));
+            Set.of("PLATFORM_ADMIN"), Set.of(), Set.of());
 
     @Test
-    void allowsOnlyExplicitlyConfiguredEmail() {
+    void allowsPlatformAdminRole() {
         CurrentUserService users = mock(CurrentUserService.class);
         when(users.getRequiredCurrentUser()).thenReturn(allowed);
-        PlatformAdminAccessService access = new PlatformAdminAccessService(users,
-                "other@example.com, OPS@archster.test ");
+        PlatformAdminAccessService access = new PlatformAdminAccessService(users);
 
         assertEquals(allowed, access.requirePlatformAdmin());
     }
@@ -27,8 +25,10 @@ class PlatformAdminAccessServiceTest {
     @Test
     void organizationSuperAdminIsNotAutomaticallyPlatformAdmin() {
         CurrentUserService users = mock(CurrentUserService.class);
-        when(users.getRequiredCurrentUser()).thenReturn(allowed);
-        PlatformAdminAccessService access = new PlatformAdminAccessService(users, "other@example.com");
+        CurrentUser organizationAdmin = new CurrentUser(2L, 5L, null, "admin@clinic.test", "Admin",
+                Set.of("SUPER_ADMIN"), Set.of(), Set.of());
+        when(users.getRequiredCurrentUser()).thenReturn(organizationAdmin);
+        PlatformAdminAccessService access = new PlatformAdminAccessService(users);
 
         assertThrows(ResponseStatusException.class, access::requirePlatformAdmin);
     }

@@ -36,4 +36,8 @@ public record CurrentUser(
     public boolean isSuperAdmin() {
         return roles.stream().anyMatch(role -> "SUPER_ADMIN".equalsIgnoreCase(role.replace("ROLE_", "")));
     }
+
+    public boolean isPlatformAdmin() {
+        return roles.stream().anyMatch(role -> "PLATFORM_ADMIN".equalsIgnoreCase(role.replace("ROLE_", "")));
+    }
 }

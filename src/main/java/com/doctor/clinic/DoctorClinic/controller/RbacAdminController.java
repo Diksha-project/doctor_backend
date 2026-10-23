@@ -64,7 +64,9 @@ public class RbacAdminController {
     public List<Map<String, Object>> roles() {
         CurrentUser currentUser = authorizationService.requirePermission(PermissionCode.ROLES_VIEW);
         return roleRepo.findByOrganizationIdOrOrganizationIsNullOrderBySystemRoleDescNameAsc(currentUser.organizationId())
-                .stream().map(this::roleResponse).toList();
+                .stream()
+                .filter(role -> !"PLATFORM_ADMIN".equals(role.getCode()))
+                .map(this::roleResponse).toList();
     }
 
     @PostMapping("/roles")
@@ -194,6 +196,10 @@ public class RbacAdminController {
         for (Long roleId : roleIds) {
             Role role = roleRepo.findWithPermissionsById(roleId)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Role not found"));
+            if ("PLATFORM_ADMIN".equals(role.getCode())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Platform administrator roles are managed outside organization RBAC");
+            }
             if (role.getOrganization() != null && !organizationId.equals(role.getOrganization().getId())) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Role belongs to another organization");
             }
