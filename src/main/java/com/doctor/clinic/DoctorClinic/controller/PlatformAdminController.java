@@ -3,10 +3,13 @@ package com.doctor.clinic.DoctorClinic.controller;
 import com.doctor.clinic.DoctorClinic.entity.*;
 import com.doctor.clinic.DoctorClinic.model.SubscriptionStatus;
 import com.doctor.clinic.DoctorClinic.repo.*;
+import com.doctor.clinic.DoctorClinic.request.PlatformOrganizationOnboardingRequest;
 import com.doctor.clinic.DoctorClinic.request.UpdateDemoRequestRequest;
 import com.doctor.clinic.DoctorClinic.response.DemoRequestResponse;
+import com.doctor.clinic.DoctorClinic.response.PlatformOnboardingResponse;
 import com.doctor.clinic.DoctorClinic.security.PlatformAdminAccessService;
 import com.doctor.clinic.DoctorClinic.service.DemoRequestService;
+import com.doctor.clinic.DoctorClinic.service.PlatformOnboardingService;
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -27,6 +30,7 @@ public class PlatformAdminController {
 
     private final PlatformAdminAccessService access;
     private final DemoRequestService demoRequestService;
+    private final PlatformOnboardingService onboardingService;
     private final OrganizationRepo organizations;
     private final DoctorRepo doctors;
     private final SubscriptionRepo subscriptions;
@@ -65,6 +69,14 @@ public class PlatformAdminController {
                                           @Valid @RequestBody UpdateDemoRequestRequest input) {
         access.requirePlatformAdmin();
         return demoRequestService.update(id, input);
+    }
+
+    @PostMapping("/onboarding/organizations")
+    @ResponseStatus(HttpStatus.CREATED)
+    public PlatformOnboardingResponse onboardOrganization(
+            @Valid @RequestBody PlatformOrganizationOnboardingRequest input) {
+        access.requirePlatformAdmin();
+        return onboardingService.onboardOrganization(input);
     }
 
     @GetMapping("/organizations")

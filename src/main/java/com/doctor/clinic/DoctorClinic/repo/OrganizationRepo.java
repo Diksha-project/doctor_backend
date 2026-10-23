@@ -17,7 +17,6 @@ public interface OrganizationRepo extends JpaRepository<Organization, Long> {
 	Optional<Organization> findByOrganizationName(String organizationName);
 
 	Optional<Organization> findByOwnerEmail(String email);
-
 	@Query("SELECT COALESCE(MIN(o.overflowCheckIntervalMinutes), 30) FROM Organization o")
 	Integer findMinimumOverflowCheckIntervalMinutes();
 	

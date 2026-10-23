@@ -1,8 +1,9 @@
 package com.doctor.clinic.DoctorClinic.model;
 
 public enum OrganizationType {
-    CLINIC("Clinic", 2),      // Max 2 doctors
-    NURSING_HOME("Nursing Home", 10); // Max 10 doctors
+    CLINIC("Clinic", 2),
+    NURSING_HOME("Nursing Home", 10),
+    HOSPITAL("Hospital", 25);
     
     private final String displayName;
     private final int defaultMaxDoctors;
