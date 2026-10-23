@@ -12,7 +12,7 @@ public interface WhatsAppConversationService {
     Map<String, Object> markConversationRead(Long conversationId, Long organizationId);
     Map<String, Object> closeConversation(Long conversationId, Long organizationId);
 
-    Map<String, Object> startConversation(Long organizationId, Long patientId, Long doctorId);
+    Map<String, Object> startConversation(Long organizationId, Long patientId, Long userId);
 
     Map<String, Object> sendAttachment(Long conversationId, Long organizationId,
                                        org.springframework.web.multipart.MultipartFile file, String caption);

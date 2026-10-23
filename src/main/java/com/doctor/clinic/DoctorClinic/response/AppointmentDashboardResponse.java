@@ -10,7 +10,7 @@ import lombok.Data;
 @Builder
 public class AppointmentDashboardResponse {
 	
-	private Long doctorId;
+	private Long userId;
     private String doctorName;
     private String doctorSpecialization;
     private LocalDate today;

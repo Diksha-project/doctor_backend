@@ -5,7 +5,7 @@ import java.time.LocalDateTime;
 public record PatientChatRealtimeMessage(
         Long messageId,
         Long patientId,
-        Long doctorId,
+        Long userId,
         Long organizationId,
         String direction,
         String messageType,

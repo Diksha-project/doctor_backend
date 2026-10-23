@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class BookingRequestResponse {
     private Long id;
-    private Long doctorId;
+    private Long userId;
     private String doctorName;
     private String patientName;
     private String patientPhone;

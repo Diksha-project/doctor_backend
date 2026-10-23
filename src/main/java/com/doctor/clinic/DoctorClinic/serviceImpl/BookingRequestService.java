@@ -253,7 +253,7 @@ public class BookingRequestService {
     private BookingRequestResponse toResponse(BookingRequest r) {
         return BookingRequestResponse.builder()
                 .id(r.getId())
-                .doctorId(r.getDoctor().getId())
+                .userId(r.getDoctor().getUser().getId())
                 .doctorName(r.getDoctor().getFullName())
                 .patientName(r.getPatientName())
                 .patientPhone(r.getPatientPhone())

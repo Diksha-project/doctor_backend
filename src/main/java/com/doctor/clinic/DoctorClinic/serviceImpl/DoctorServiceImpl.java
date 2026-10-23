@@ -11,6 +11,7 @@ import com.doctor.clinic.DoctorClinic.entity.Doctor;
 import com.doctor.clinic.DoctorClinic.entity.Organization;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
 import com.doctor.clinic.DoctorClinic.repo.OrganizationRepo;
+import com.doctor.clinic.DoctorClinic.repo.AppUserRepo;
 import com.doctor.clinic.DoctorClinic.request.DoctorRegisterRequest;
 import com.doctor.clinic.DoctorClinic.request.BasicDoctorProfileUpdateRequest;
 import com.doctor.clinic.DoctorClinic.request.WhatsAppBusinessActivateRequest;
@@ -26,6 +27,12 @@ public class DoctorServiceImpl implements DoctorService {
 
 	@Autowired
 	private OrganizationRepo organizationRepo;
+
+	@Autowired
+	private AppUserRepo appUserRepo;
+
+	@Autowired
+	private com.doctor.clinic.DoctorClinic.service.DoctorIdentityService doctorIdentityService;
 
 	private final WebClient webClient = WebClient.builder().build();
 
@@ -43,8 +50,12 @@ public class DoctorServiceImpl implements DoctorService {
 	public String addNewDoctor(DoctorRegisterRequest req) {
 		Organization organization = organizationRepo.findByOrganizationName(req.getOrganizationName()).orElseThrow(
 				() -> new RuntimeException("Organization not found with name: " + req.getOrganizationName()));
+		com.doctor.clinic.DoctorClinic.entity.AppUser user = appUserRepo.findDetailedByEmailIgnoreCase(req.getEmail())
+				.filter(value -> value.getOrganization().getId().equals(organization.getId()))
+				.orElseThrow(() -> new RuntimeException(
+						"Create the user and assign the Doctor role before adding clinical details"));
 
-		Doctor doctor = Doctor.builder().firstName(req.getFirstName()).lastName(req.getLastName())
+		Doctor doctor = Doctor.builder().user(user).firstName(req.getFirstName()).lastName(req.getLastName())
 				.registrationNumber(req.getRegistrationNumber()).qualification(req.getQualification())
 				.specialization(req.getSpecialization()).experienceYears(req.getExperienceYears())
 				.phoneNumber(req.getPhoneNumber()).email(req.getEmail()).consultationFee(req.getConsultationFee())
@@ -62,9 +73,9 @@ public class DoctorServiceImpl implements DoctorService {
 	public Map<String, Object> activateNumber(WhatsAppBusinessActivateRequest request) {
 
 		String authorizationCode = request.getAuthorizationCode();
-		Long doctorId = request.getDoctorId();
+		Long userId = request.getUserId();
 
-		System.out.println("Activating WhatsApp for doctor ID: {}" + doctorId);
+		System.out.println("Activating WhatsApp for user ID: {}" + userId);
 
 		// Step 1: Exchange authorization code for access token
 		String tokenUrl = "https://graph.facebook.com/v22.0/oauth/access_token" + "?client_id=" + appId
@@ -103,7 +114,7 @@ public class DoctorServiceImpl implements DoctorService {
 		System.out.println("Phone number found: {} with ID: {}" + phoneNumber + "  " + phoneNumberId);
 
 		// Step 3: Save to database
-		Doctor doctor = doctorRepo.findById(doctorId).orElseThrow(() -> new RuntimeException("Doctor not found"));
+		Doctor doctor = doctorRepo.findByUserId(userId).orElseThrow(() -> new RuntimeException("Doctor profile not found"));
 
 		doctor.setWhatsappPhoneNumberId(phoneNumberId);
 		doctor.setWhatsappAccessToken(accessToken);
@@ -115,17 +126,16 @@ public class DoctorServiceImpl implements DoctorService {
 
 		// Step 4: Return response
 		return Map.of("success", true, "message", "WhatsApp number activated successfully", "phoneNumberId",
-				phoneNumberId, "phoneNumber", phoneNumber, "doctorId", doctorId);
+				phoneNumberId, "phoneNumber", phoneNumber, "userId", userId);
 	}
 
 	@Override
-	public DoctorResponse getDoctorDetailsByID(Long doctorId) {
+	public DoctorResponse getDoctorDetails(Long userId, Long organizationId) {
 
-	    Doctor doctor = doctorRepo.findById(doctorId)
-	            .orElseThrow(() -> new RuntimeException("Doctor not found"));
+	    Doctor doctor = doctorIdentityService.requireDoctor(userId, organizationId);
 
 	    return DoctorResponse.builder()
-	            .id(doctor.getId())
+	            .userId(doctor.getUser().getId())
 	            .firstName(doctor.getFirstName())
 	            .lastName(doctor.getLastName())
 	            .registrationNumber(doctor.getRegistrationNumber())
@@ -152,9 +162,8 @@ public class DoctorServiceImpl implements DoctorService {
 
 	@Override
 	@org.springframework.transaction.annotation.Transactional
-	public DoctorResponse updateBasicProfile(Long doctorId, Long organizationId, BasicDoctorProfileUpdateRequest request) {
-		Doctor doctor = doctorRepo.findByIdAndOrganizationId(doctorId, organizationId)
-				.orElseThrow(() -> new RuntimeException("Doctor not found"));
+	public DoctorResponse updateBasicProfile(Long userId, Long organizationId, BasicDoctorProfileUpdateRequest request) {
+		Doctor doctor = doctorIdentityService.requireDoctor(userId, organizationId);
 		String fullName = request.getFullName().trim();
 		int split = fullName.indexOf(' ');
 		doctor.setFirstName(split < 0 ? fullName : fullName.substring(0, split).trim());
@@ -162,6 +171,7 @@ public class DoctorServiceImpl implements DoctorService {
 		doctor.setEmail(request.getEmail().trim());
 		doctor.setPhoneNumber(request.getPhoneNumber().trim());
 		doctor.setAddress(request.getAddress().trim());
-		return getDoctorDetailsByID(doctorRepo.save(doctor).getId());
+		doctorRepo.save(doctor);
+		return getDoctorDetails(userId, organizationId);
 	}
 }

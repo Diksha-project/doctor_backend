@@ -15,7 +15,6 @@ public class LoginResponse {
     private Set<String> roles;
     private Set<String> permissions;
     private Long userId;
-    private Long doctorId;
     private Long organizationId;
     private String organizationName;
     private String name;

@@ -21,5 +21,5 @@ public class PrescriptionDocumentSettingsController {
     @PostMapping("/templates/{id}/duplicate") public PrescriptionDocumentSettingsService.TemplateView duplicate(@PathVariable UUID id) { return service.duplicate(id); }
     public record StatusInput(String status) {}
     @PutMapping("/templates/{id}/status") public PrescriptionDocumentSettingsService.TemplateView status(@PathVariable UUID id, @RequestBody StatusInput input) { return service.setStatus(id, input.status()); }
-    @GetMapping("/resolved") public Map<String, Object> resolved(@RequestParam(required = false) Long doctorId) { return service.resolvedForCurrentUser(doctorId); }
+    @GetMapping("/resolved") public Map<String, Object> resolved(@RequestParam(required = false) Long userId) { return service.resolvedForCurrentUser(userId); }
 }

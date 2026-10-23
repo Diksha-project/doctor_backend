@@ -6,7 +6,7 @@ import lombok.Data;
 public class WhatsAppBusinessActivateRequest {
 
 	    private String authorizationCode;
-	    private Long doctorId;
+	    private Long userId;
 	}
 
 

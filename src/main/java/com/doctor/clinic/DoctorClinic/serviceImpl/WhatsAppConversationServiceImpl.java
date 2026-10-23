@@ -86,8 +86,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
         if (isOwnDoctorOnly(user)) {
             conversations = conversations.stream()
                     .filter(conversation -> conversation.getDoctor() != null
-                            && user.doctorId() != null
-                            && user.doctorId().equals(conversation.getDoctor().getId()))
+                            && conversation.getDoctor().getUser().getId().equals(user.userId()))
                     .toList();
         }
         List<Map<String, Object>> result = new ArrayList<>();
@@ -286,11 +285,11 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
 
     @Override
     @Transactional
-    public Map<String, Object> startConversation(Long organizationId, Long patientId, Long doctorId) {
+    public Map<String, Object> startConversation(Long organizationId, Long patientId, Long userId) {
         Patient patient = patientRepo.findByIdAndOrganizationId(patientId, organizationId)
                 .orElseThrow(() -> BusinessException.notFound("Patient", patientId));
-        Doctor doctor = doctorRepo.findByIdAndOrganizationId(doctorId, organizationId)
-                .orElseThrow(() -> BusinessException.notFound("Doctor", doctorId));
+        Doctor doctor = doctorRepo.findByUserIdAndOrganizationId(userId, organizationId)
+                .orElseThrow(() -> BusinessException.notFound("Doctor user", userId));
         String phone = patient.getNormalizedPhone();
         if (phone == null || phone.isBlank()) {
             throw new IllegalArgumentException("Patient has no phone number");
@@ -495,7 +494,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
                     ? LocalDateTime.now().getYear() : conversation.getPatient().getCreatedAt().getYear();
             map.put("patientCode", String.format("PT-%d-%04d", year, conversation.getPatient().getId()));
         }
-        map.put("doctorId", conversation.getDoctor() == null ? null : conversation.getDoctor().getId());
+        map.put("userId", conversation.getDoctor() == null ? null : conversation.getDoctor().getUser().getId());
         map.put("phoneNumber", conversation.getPhoneNumber());
         map.put("status", conversation.getStatus().name());
         map.put("automationMode", conversation.getAutomationMode().name());
@@ -644,15 +643,15 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
         if (!isOwnDoctorOnly(user)) {
             return;
         }
-        Long doctorId = conversation.getDoctor() == null ? null : conversation.getDoctor().getId();
-        if (user.doctorId() == null || !user.doctorId().equals(doctorId)) {
+        Long doctorUserId = conversation.getDoctor() == null ? null : conversation.getDoctor().getUser().getId();
+        if (!user.userId().equals(doctorUserId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "WhatsApp conversation not found");
         }
     }
 
     private Doctor defaultConversationDoctor(Long organizationId, CurrentUser user) {
         if (isOwnDoctorOnly(user)) {
-            return doctorRepo.findByIdAndOrganizationId(user.doctorId(), organizationId)
+            return doctorRepo.findByUserIdAndOrganizationId(user.userId(), organizationId)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found"));
         }
         List<Doctor> doctors = doctorRepo.findByOrganizationId(organizationId);
@@ -707,7 +706,7 @@ public class WhatsAppConversationServiceImpl implements WhatsAppConversationServ
                     event.put("conversationId", conversation.getId());
                     event.put("organizationId", organizationId);
                     event.put("patientId", patient.getId());
-                    event.put("doctorId", doctor.getId());
+                    event.put("userId", doctor.getUser().getId());
                     event.put("phoneNumber", phoneNumber);
                     event.put("status", conversation.getStatus().name());
                     event.put("automationMode", conversation.getAutomationMode().name());

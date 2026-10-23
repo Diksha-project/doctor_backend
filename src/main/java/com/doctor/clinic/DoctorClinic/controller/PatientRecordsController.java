@@ -104,7 +104,7 @@ public class PatientRecordsController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found"));
 
         return chatMessageRepo.findMedicalReportsForPatient(patientId, organizationId).stream()
-                .map(report -> new MedicalReportRecord(report.getMessageId(), report.getDoctorId(),
+                .map(report -> new MedicalReportRecord(report.getMessageId(), report.getUserId(),
                         report.getDoctorName(), report.getFileName(), report.getMimeType(), report.getUploadedAt(),
                         "/api/patients/" + patientId + "/messages/" + report.getMessageId() + "/attachment"))
                 .toList();
@@ -137,7 +137,7 @@ public class PatientRecordsController {
         Long organizationId = organizationId();
         Patient patient = patientRepo.findByIdAndOrganizationId(patientId, organizationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found"));
-        Doctor doctor = doctorRepo.findByIdAndOrganizationId(request.getDoctorId(), organizationId)
+        Doctor doctor = doctorRepo.findByUserIdAndOrganizationId(request.getUserId(), organizationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found"));
         if (!doctor.isWhatsappActivated() || doctor.getWhatsappPhoneNumberId() == null
                 || doctor.getWhatsappAccessToken() == null) {
@@ -153,7 +153,7 @@ public class PatientRecordsController {
 
         chatHistoryService.recordOutbound(organizationId, patient, doctor, request.getReplyToMessageId(), message);
         return ResponseEntity.ok(java.util.Map.of("success", true, "patientId", patientId,
-                "doctorId", doctor.getId(), "message", "Reply sent"));
+                "userId", doctor.getUser().getId(), "message", "Reply sent"));
     }
 
     @GetMapping("/{patientId}/messages/{messageId}/attachment")

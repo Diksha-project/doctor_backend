@@ -8,7 +8,7 @@ import lombok.Data;
 @Data
 public class SendPatientChatReplyRequest {
     @NotNull
-    private Long doctorId;
+    private Long userId;
 
     @NotBlank
     @Size(max = 4096)

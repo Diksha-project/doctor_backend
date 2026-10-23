@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.doctor.clinic.DoctorClinic.CustomException.BusinessException;
 import com.doctor.clinic.DoctorClinic.response.DoctorSlotsDashboardResponse;
 import com.doctor.clinic.DoctorClinic.service.DoctorSlotsService;
+import com.doctor.clinic.DoctorClinic.service.DoctorIdentityService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,12 +23,14 @@ import lombok.extern.slf4j.Slf4j;
 public class DoctorSlotsController {
     
     private final DoctorSlotsService doctorSlotsService;
+    private final DoctorIdentityService doctorIdentityService;
     
-    @GetMapping("/{doctorId}/slots-dashboard")
+    @GetMapping("/{userId}/slots-dashboard")
     public ResponseEntity<DoctorSlotsDashboardResponse> getDoctorSlotsDashboard(
-            @PathVariable Long doctorId) {
+            @PathVariable Long userId) {
         
-        log.info("Fetching slots dashboard for doctor: {}", doctorId);
+        log.info("Fetching slots dashboard for user: {}", userId);
+        Long doctorId = doctorIdentityService.requireDoctor(userId, currentOrganizationId()).getId();
         
         DoctorSlotsDashboardResponse response = doctorSlotsService.getDoctorSlotsDashboard(
                 doctorId, currentOrganizationId());

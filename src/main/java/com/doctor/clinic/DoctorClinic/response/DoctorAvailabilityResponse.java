@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class DoctorAvailabilityResponse {
-    private Long doctorId;
+    private Long userId;
     private Integer appointmentDurationMinutes;
     private Integer maxAppointmentsPerDay;
     private Integer slotGenerationHorizonDays;

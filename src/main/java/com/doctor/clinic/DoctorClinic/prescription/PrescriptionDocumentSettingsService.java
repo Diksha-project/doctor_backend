@@ -29,9 +29,9 @@ public class PrescriptionDocumentSettingsService {
     public record ClinicProfile(Long organizationId, String name, String address, String phone, String email,
             String website, String tagline, boolean hasLogo, String logoUrl) {}
     public record ProfileInput(String name, String address, String phone, String email, String website, String tagline) {}
-    public record TemplateInput(UUID id, long version, Long doctorId, String name, String templateType,
+    public record TemplateInput(UUID id, long version, Long userId, String name, String templateType,
             boolean isDefault, Map<String, Object> configuration) {}
-    public record TemplateView(UUID id, long version, Long doctorId, String name, String templateType,
+    public record TemplateView(UUID id, long version, Long userId, String name, String templateType,
             String status, boolean isDefault, Map<String, Object> configuration, Instant updatedAt) {}
 
     @Transactional(readOnly = true)
@@ -100,22 +100,23 @@ public class PrescriptionDocumentSettingsService {
     @Transactional
     public TemplateView save(TemplateInput input) {
         var user = authorization.requireOwnOrganization();
-        authorizeEdit(user.organizationId(), input.doctorId());
-        if (input.doctorId() != null) doctors.findByIdAndOrganizationId(input.doctorId(), user.organizationId()).orElseThrow(this::missing);
+        authorizeEdit(user.organizationId(), input.userId());
+        Long doctorId = input.userId() == null ? null : doctors.findByUserIdAndOrganizationId(input.userId(), user.organizationId())
+                .orElseThrow(this::missing).getId();
         validate(input);
         PrescriptionDocumentTemplate entity;
         if (input.id() == null) {
             entity = new PrescriptionDocumentTemplate(); entity.setId(UUID.randomUUID()); entity.setOrganizationId(user.organizationId());
         } else {
             entity = templates.findByIdAndOrganizationId(input.id(), user.organizationId()).orElseThrow(this::missing);
-            authorizeEdit(user.organizationId(), entity.getDoctorId());
+            authorizeEdit(user.organizationId(), userIdOf(entity.getDoctorId(), user.organizationId()));
             if (entity.getVersion() != input.version()) throw new ResponseStatusException(HttpStatus.CONFLICT, "Template changed. Reload and retry");
         }
-        entity.setDoctorId(input.doctorId()); entity.setName(input.name().trim()); entity.setTemplateType(input.templateType());
+        entity.setDoctorId(doctorId); entity.setName(input.name().trim()); entity.setTemplateType(input.templateType());
         entity.setConfiguration(json(input.configuration()));
         if (entity.getStatus() == null) entity.setStatus("ACTIVE");
         entity.setUpdatedAt(Instant.now());
-        if (input.isDefault()) clearDefaults(user.organizationId(), input.doctorId(), entity.getId());
+        if (input.isDefault()) clearDefaults(user.organizationId(), doctorId, entity.getId());
         entity.setDefault(input.isDefault());
         return view(templates.saveAndFlush(entity));
     }
@@ -124,7 +125,7 @@ public class PrescriptionDocumentSettingsService {
     public TemplateView duplicate(UUID id) {
         var user = authorization.requireOwnOrganization();
         var source = templates.findByIdAndOrganizationId(id, user.organizationId()).orElseThrow(this::missing);
-        authorizeEdit(user.organizationId(), source.getDoctorId());
+        authorizeEdit(user.organizationId(), userIdOf(source.getDoctorId(), user.organizationId()));
         var copy = new PrescriptionDocumentTemplate(); copy.setId(UUID.randomUUID()); copy.setOrganizationId(user.organizationId());
         copy.setDoctorId(source.getDoctorId()); copy.setName(uniqueCopyName(source.getName())); copy.setTemplateType(source.getTemplateType());
         copy.setConfiguration(source.getConfiguration()); copy.setStatus("ACTIVE"); copy.setDefault(false);
@@ -135,7 +136,7 @@ public class PrescriptionDocumentSettingsService {
     public TemplateView setStatus(UUID id, String status) {
         var user = authorization.requireOwnOrganization();
         var entity = templates.findByIdAndOrganizationId(id, user.organizationId()).orElseThrow(this::missing);
-        authorizeEdit(user.organizationId(), entity.getDoctorId());
+        authorizeEdit(user.organizationId(), userIdOf(entity.getDoctorId(), user.organizationId()));
         String normalized = Optional.ofNullable(status).orElse("").toUpperCase(Locale.ROOT);
         if (!Set.of("ACTIVE", "ARCHIVED").contains(normalized)) bad("Unsupported template status");
         if ("ARCHIVED".equals(normalized) && entity.isDefault()) bad("Choose another default before archiving this template");
@@ -161,9 +162,11 @@ public class PrescriptionDocumentSettingsService {
     }
 
     @Transactional(readOnly = true)
-    public Map<String, Object> resolvedForCurrentUser(Long doctorId) {
+    public Map<String, Object> resolvedForCurrentUser(Long userId) {
         var user = authorization.requirePermission("SETTINGS:VIEW");
-        if (doctorId != null) authorization.requireDoctorPermission("PRESCRIPTIONS:VIEW", user.organizationId(), doctorId);
+        if (userId != null) authorization.requireDoctorPermission("PRESCRIPTIONS:VIEW", user.organizationId(), userId);
+        Long doctorId = userId == null ? null : doctors.findByUserIdAndOrganizationId(userId, user.organizationId())
+                .orElseThrow(this::missing).getId();
         return resolveSnapshot(user.organizationId(), doctorId);
     }
 
@@ -206,7 +209,8 @@ public class PrescriptionDocumentSettingsService {
                 "medicines", "investigations", "advice", "followUp"));
         return defaults;
     }
-    private TemplateView view(PrescriptionDocumentTemplate t) { return new TemplateView(t.getId(), t.getVersion(), t.getDoctorId(), t.getName(), t.getTemplateType(), t.getStatus(), t.isDefault(), read(t.getConfiguration()), t.getUpdatedAt()); }
+    private Long userIdOf(Long doctorId, Long organizationId) { return doctorId == null ? null : doctors.findByIdAndOrganizationId(doctorId, organizationId).orElseThrow(this::missing).getUser().getId(); }
+    private TemplateView view(PrescriptionDocumentTemplate t) { return new TemplateView(t.getId(), t.getVersion(), userIdOf(t.getDoctorId(), t.getOrganizationId()), t.getName(), t.getTemplateType(), t.getStatus(), t.isDefault(), read(t.getConfiguration()), t.getUpdatedAt()); }
     private ClinicProfile profileOf(Organization org) { return new ClinicProfile(org.getId(), org.getOrganizationName(), org.getClinicAddress(), org.getClinicPhone() == null ? org.getOwnerMobile() : org.getClinicPhone(), org.getClinicEmail() == null ? org.getOwnerEmail() : org.getClinicEmail(), org.getClinicWebsite(), org.getClinicTagline(), org.getLogoObjectKey() != null, org.getLogoObjectKey() == null ? null : "/prescription-settings/clinic/logo"); }
     private String uniqueCopyName(String source) { return (source.length() > 110 ? source.substring(0, 110) : source) + " Copy"; }
     private void deleteLogoQuietly(String objectKey) { try { storage.delete(objectKey); } catch (RuntimeException ignored) { /* Do not undo a successful profile update when stale-asset cleanup fails. */ } }

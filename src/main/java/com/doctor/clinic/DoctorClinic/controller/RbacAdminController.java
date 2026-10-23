@@ -3,6 +3,7 @@ package com.doctor.clinic.DoctorClinic.controller;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.math.BigDecimal;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -25,13 +26,13 @@ import com.doctor.clinic.DoctorClinic.entity.UserRole;
 import com.doctor.clinic.DoctorClinic.model.ResourceScope;
 import com.doctor.clinic.DoctorClinic.repo.AppUserRepo;
 import com.doctor.clinic.DoctorClinic.repo.DoctorRepo;
-import com.doctor.clinic.DoctorClinic.repo.PermissionRepo;
 import com.doctor.clinic.DoctorClinic.repo.RoleRepo;
 import com.doctor.clinic.DoctorClinic.request.RoleUpsertRequest;
 import com.doctor.clinic.DoctorClinic.request.UserUpsertRequest;
 import com.doctor.clinic.DoctorClinic.security.AuthorizationService;
 import com.doctor.clinic.DoctorClinic.security.CurrentUser;
 import com.doctor.clinic.DoctorClinic.security.PermissionCode;
+import com.doctor.clinic.DoctorClinic.service.RbacRoleService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -44,7 +45,7 @@ public class RbacAdminController {
     private final AuthorizationService authorizationService;
     private final AppUserRepo appUserRepo;
     private final RoleRepo roleRepo;
-    private final PermissionRepo permissionRepo;
+    private final RbacRoleService rbacRoleService;
     private final DoctorRepo doctorRepo;
     private final PasswordEncoder passwordEncoder;
 
@@ -63,45 +64,20 @@ public class RbacAdminController {
     @GetMapping("/roles")
     public List<Map<String, Object>> roles() {
         CurrentUser currentUser = authorizationService.requirePermission(PermissionCode.ROLES_VIEW);
-        return roleRepo.findByOrganizationIdOrOrganizationIsNullOrderBySystemRoleDescNameAsc(currentUser.organizationId())
-                .stream()
-                .filter(role -> !"PLATFORM_ADMIN".equals(role.getCode()))
-                .map(this::roleResponse).toList();
+        return rbacRoleService.listRoles(currentUser.organizationId()).stream().map(this::roleResponse).toList();
     }
 
     @PostMapping("/roles")
     @ResponseStatus(HttpStatus.CREATED)
     public Map<String, Object> createRole(@RequestBody RoleUpsertRequest request) {
         CurrentUser currentUser = authorizationService.requirePermission(PermissionCode.ROLES_EDIT);
-        String code = normalizeCode(request.getCode() == null ? request.getName() : request.getCode());
-        if (roleRepo.existsByOrganizationIdAndCodeIgnoreCase(currentUser.organizationId(), code)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Role code already exists");
-        }
-        Role role = new Role();
-        role.setCode(code);
-        role.setName(requiredText(request.getName(), "Role name is required"));
-        role.setDescription(request.getDescription());
-        role.setOrganization(new com.doctor.clinic.DoctorClinic.entity.Organization());
-        role.getOrganization().setId(currentUser.organizationId());
-        role.setSystemRole(false);
-        role.setActive(true);
-        role.setPermissions(resolvePermissions(request.getPermissions()));
-        return roleResponse(roleRepo.save(role));
+        return roleResponse(rbacRoleService.createRole(currentUser.organizationId(), request));
     }
 
     @PutMapping("/roles/{roleId}")
     public Map<String, Object> updateRole(@PathVariable Long roleId, @RequestBody RoleUpsertRequest request) {
         CurrentUser currentUser = authorizationService.requirePermission(PermissionCode.ROLES_EDIT);
-        Role role = roleRepo.findWithPermissionsById(roleId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Role not found"));
-        if (role.getOrganization() == null || !currentUser.organizationId().equals(role.getOrganization().getId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "System roles cannot be edited here");
-        }
-        role.setName(requiredText(request.getName(), "Role name is required"));
-        role.setDescription(request.getDescription());
-        role.setActive(request.getActive() == null || request.getActive());
-        role.setPermissions(resolvePermissions(request.getPermissions()));
-        return roleResponse(roleRepo.save(role));
+        return roleResponse(rbacRoleService.updateRole(currentUser.organizationId(), roleId, request));
     }
 
     @GetMapping("/users")
@@ -128,9 +104,10 @@ public class RbacAdminController {
         user.setEmail(request.getEmail().trim().toLowerCase());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setActive(request.getActive() == null || request.getActive());
-        assignDoctor(user, request.getDoctorId(), currentUser.organizationId());
         assignRoles(user, request.getRoleIds(), currentUser.organizationId());
-        return userResponse(appUserRepo.save(user));
+        AppUser savedUser = appUserRepo.save(user);
+        syncDoctorProfile(savedUser, request, currentUser.organizationId());
+        return userResponse(savedUser);
     }
 
     @PutMapping("/users/{userId}")
@@ -142,7 +119,6 @@ public class RbacAdminController {
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
             user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         }
-        assignDoctor(user, request.getDoctorId(), currentUser.organizationId());
         assignRoles(user, request.getRoleIds(), currentUser.organizationId());
         if (request.getActive() != null && !request.getActive() && hasRole(user, "SUPER_ADMIN")) {
             long activeSuperAdmins = appUserRepo.findByOrganizationIdOrderByFullNameAsc(currentUser.organizationId()).stream()
@@ -155,7 +131,9 @@ public class RbacAdminController {
             }
         }
         user.setActive(request.getActive() == null || request.getActive());
-        return userResponse(appUserRepo.save(user));
+        AppUser savedUser = appUserRepo.save(user);
+        syncDoctorProfile(savedUser, request, currentUser.organizationId());
+        return userResponse(savedUser);
     }
 
     @PatchMapping("/users/{userId}/active")
@@ -178,24 +156,17 @@ public class RbacAdminController {
         return userResponse(appUserRepo.save(user));
     }
 
-    private void assignDoctor(AppUser user, Long doctorId, Long organizationId) {
-        if (doctorId == null) {
-            user.setDoctor(null);
-            return;
-        }
-        Doctor doctor = doctorRepo.findByIdAndOrganizationId(doctorId, organizationId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found"));
-        user.setDoctor(doctor);
-    }
-
     private void assignRoles(AppUser user, List<Long> roleIds, Long organizationId) {
         user.getUserRoles().clear();
         if (roleIds == null || roleIds.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At least one role is required");
         }
-        for (Long roleId : roleIds) {
-            Role role = roleRepo.findWithPermissionsById(roleId)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Role not found"));
+        List<Long> distinctRoleIds = roleIds.stream().distinct().toList();
+        List<Role> selectedRoles = roleRepo.findAllWithPermissionsByIdIn(distinctRoleIds);
+        if (selectedRoles.size() != distinctRoleIds.size()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Role not found");
+        }
+        for (Role role : selectedRoles) {
             if ("PLATFORM_ADMIN".equals(role.getCode())) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                         "Platform administrator roles are managed outside organization RBAC");
@@ -206,28 +177,10 @@ public class RbacAdminController {
             UserRole userRole = new UserRole();
             userRole.setUser(user);
             userRole.setRole(role);
-            userRole.setScope(user.getDoctor() == null ? ResourceScope.ORGANIZATION : ResourceScope.OWN_DOCTOR);
+            userRole.setScope("DOCTOR".equals(role.getCode())
+                    ? ResourceScope.OWN_DOCTOR : ResourceScope.ORGANIZATION);
             user.getUserRoles().add(userRole);
         }
-    }
-
-    private Set<Permission> resolvePermissions(List<String> permissionCodes) {
-        if (permissionCodes == null || permissionCodes.isEmpty()) {
-            return Set.of();
-        }
-        Set<String> canonicalCodes = permissionCodes.stream()
-                .filter(code -> code != null && !code.isBlank())
-                .map(String::trim)
-                .distinct()
-                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
-        if (canonicalCodes.stream().anyMatch(code -> PermissionCode.fromCode(code).isEmpty())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown canonical permission code");
-        }
-        Set<Permission> permissions = new java.util.HashSet<>(permissionRepo.findByCodeIn(canonicalCodes));
-        if (permissions.size() != canonicalCodes.size()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Canonical permission is not available");
-        }
-        return permissions;
     }
 
     private Map<String, Object> roleResponse(Role role) {
@@ -261,8 +214,49 @@ public class RbacAdminController {
                 "email", user.getEmail(),
                 "active", user.isActive(),
                 "organizationId", user.getOrganization().getId(),
-                "doctorId", user.getDoctor() == null ? "" : user.getDoctor().getId(),
+                "doctorProfile", doctorRepo.findByUserIdAndOrganizationId(user.getId(), user.getOrganization().getId()).isPresent(),
                 "roles", roles);
+    }
+
+    private void syncDoctorProfile(AppUser user, UserUpsertRequest request, Long organizationId) {
+        boolean doctorRoleSelected = appUserRepo.findActiveRoleCodesByUserId(user.getId()).contains("DOCTOR");
+        Doctor existing = doctorRepo.findByUserIdAndOrganizationId(user.getId(), organizationId).orElse(null);
+        if (!doctorRoleSelected) {
+            return;
+        }
+        if (existing == null && (request.getRegistrationNumber() == null || request.getRegistrationNumber().isBlank())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Registration number is required when assigning the Doctor role");
+        }
+
+        Doctor doctor = existing == null ? new Doctor() : existing;
+        doctor.setUser(user);
+        doctor.setOrganization(user.getOrganization());
+        String[] name = user.getFullName().trim().split("\\s+", 2);
+        doctor.setFirstName(name[0]);
+        doctor.setLastName(name.length > 1 ? name[1] : null);
+        doctor.setEmail(user.getEmail());
+        doctor.setRegistrationNumber(valueOrExisting(request.getRegistrationNumber(), doctor.getRegistrationNumber()));
+        doctor.setPhoneNumber(valueOrExisting(request.getPhoneNumber(), doctor.getPhoneNumber()));
+        if (doctor.getPhoneNumber() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Mobile number is required when assigning the Doctor role");
+        }
+        doctor.setQualification(valueOrExisting(request.getQualification(), doctor.getQualification()));
+        doctor.setSpecialization(valueOrExisting(request.getSpecialization(), doctor.getSpecialization()));
+        doctor.setExperienceYears(request.getExperienceYears() == null
+                ? doctor.getExperienceYears() : request.getExperienceYears());
+        doctor.setConsultationFee(request.getConsultationFee() == null
+                ? (doctor.getConsultationFee() == null ? BigDecimal.ZERO : doctor.getConsultationFee())
+                : request.getConsultationFee());
+        if (doctor.getStatus() == null) {
+            doctor.setStatus("ACTIVE");
+        }
+        doctorRepo.save(doctor);
+    }
+
+    private String valueOrExisting(String value, String existing) {
+        return value == null || value.isBlank() ? existing : value.trim();
     }
 
     private boolean hasRole(AppUser user, String roleCode) {
@@ -274,10 +268,6 @@ public class RbacAdminController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
         }
         return value.trim();
-    }
-
-    private String normalizeCode(String value) {
-        return requiredText(value, "Role code is required").trim().toUpperCase().replaceAll("[^A-Z0-9]+", "_");
     }
 
 }

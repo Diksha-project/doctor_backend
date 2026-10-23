@@ -52,7 +52,6 @@ public class CurrentUserService {
         return new CurrentUser(
                 user.getId(),
                 user.getOrganization().getId(),
-                user.getDoctor() == null ? null : user.getDoctor().getId(),
                 user.getEmail(),
                 user.getFullName(),
                 roles,

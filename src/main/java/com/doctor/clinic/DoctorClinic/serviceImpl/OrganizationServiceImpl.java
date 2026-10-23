@@ -154,7 +154,7 @@ public class OrganizationServiceImpl implements OrganizationService {
 		int availableSlots = doctorSlotRepo.countByDoctorIdAndSlotDate(doctor.getId(), date);
 		//int availableSlots = doctorSlotRepo.countByDoctorIdAndSlotDateAndStatus(doctor.getId(), date, "AVAILABLE");
 
-		return DoctorListInfo.builder().doctorId(doctor.getId()).doctorName(doctor.getFullName())
+		return DoctorListInfo.builder().userId(doctor.getUser().getId()).doctorName(doctor.getFullName())
 				.specialization(doctor.getSpecialization()).qualification(doctor.getQualification())
 				.experienceYears(doctor.getExperienceYears()).phoneNumber(doctor.getPhoneNumber())
 				.email(doctor.getEmail()).status(doctor.getStatus()).todayAppointments(todayAppointments)

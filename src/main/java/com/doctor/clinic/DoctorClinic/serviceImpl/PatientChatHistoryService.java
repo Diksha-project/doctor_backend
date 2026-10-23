@@ -81,7 +81,7 @@ public class PatientChatHistoryService {
         Patient patient = message.getPatient();
         Doctor doctor = message.getDoctor();
         eventPublisher.publishEvent(new ChatMessageCommittedEvent(new PatientChatRealtimeMessage(
-                message.getId(), patient.getId(), doctor.getId(), organizationId,
+                message.getId(), patient.getId(), doctor.getUser().getId(), organizationId,
                 message.getDirection(), message.getMessageType(), message.getMessageText(),
                 message.getAttachmentMimeType(), message.getAttachmentName(),
                 message.getAttachmentData() != null || message.getAttachmentObjectKey() != null, message.getCreatedAt())));

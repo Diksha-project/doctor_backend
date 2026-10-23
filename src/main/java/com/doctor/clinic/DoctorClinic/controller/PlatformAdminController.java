@@ -13,9 +13,11 @@ import com.doctor.clinic.DoctorClinic.service.PlatformOnboardingService;
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
+
 import java.math.BigDecimal;
 import java.time.*;
 import java.util.*;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -37,19 +39,32 @@ public class PlatformAdminController {
     private final AppUserRepo users;
 
     public record Overview(long organizations, long activeOrganizations, long doctors, long newDemoRequests,
-            long activeSubscriptions) {}
+                           long activeSubscriptions) {
+    }
+
     public record OrganizationView(Long id, String name, String type, String ownerName, String email, String phone,
-            boolean active, String subscriptionStatus, Integer maxDoctors, long doctors, LocalDate trialEndsAt,
-            LocalDateTime createdAt) {}
-    public record DoctorView(Long id, Long organizationId, String organizationName, String name, String email,
-            String phone, String specialization, String status, boolean accessEnabled) {}
-    public record AccessUpdate(@NotNull Boolean active) {}
+                                   boolean active, String subscriptionStatus, Integer maxDoctors, long doctors,
+                                   LocalDate trialEndsAt,
+                                   LocalDateTime createdAt) {
+    }
+
+    public record DoctorView(Long userId, Long organizationId, String organizationName, String name, String email,
+                             String phone, String specialization, String status, boolean accessEnabled) {
+    }
+
+    public record AccessUpdate(@NotNull Boolean active) {
+    }
+
     public record SubscriptionInput(@NotBlank String planType, @NotBlank String billingCycle,
-            @NotBlank String status, LocalDate startDate, LocalDate endDate, LocalDate trialEndDate,
-            @Min(1) Integer maxDoctors, @DecimalMin("0") BigDecimal amount, Boolean autoRenew) {}
+                                    @NotBlank String status, LocalDate startDate, LocalDate endDate,
+                                    LocalDate trialEndDate,
+                                    @Min(1) Integer maxDoctors, @DecimalMin("0") BigDecimal amount, Boolean autoRenew) {
+    }
+
     public record SubscriptionView(Long id, Long organizationId, String planType, String billingCycle,
-            String status, LocalDate startDate, LocalDate endDate, LocalDate trialEndDate,
-            Integer maxDoctors, BigDecimal amount, Boolean autoRenew) {}
+                                   String status, LocalDate startDate, LocalDate endDate, LocalDate trialEndDate,
+                                   Integer maxDoctors, BigDecimal amount, Boolean autoRenew) {
+    }
 
     @GetMapping("/overview")
     public Overview overview() {
@@ -102,13 +117,13 @@ public class PlatformAdminController {
         return values.stream().sorted(Comparator.comparing(Doctor::getCreatedAt).reversed()).map(this::doctorView).toList();
     }
 
-    @PutMapping("/doctors/{id}/access")
+    @PutMapping("/doctors/{userId}/access")
     @Transactional
-    public DoctorView doctorAccess(@PathVariable Long id, @Valid @RequestBody AccessUpdate input) {
+    public DoctorView doctorAccess(@PathVariable Long userId, @Valid @RequestBody AccessUpdate input) {
         access.requirePlatformAdmin();
-        Doctor doctor = doctors.findById(id).orElseThrow(this::missing);
+        Doctor doctor = doctors.findByUserId(userId).orElseThrow(this::missing);
         doctor.setStatus(input.active() ? "ACTIVE" : "INACTIVE");
-        users.findByDoctorId(id).ifPresent(user -> user.setActive(input.active()));
+        doctor.getUser().setActive(input.active());
         return doctorView(doctors.save(doctor));
     }
 
@@ -122,8 +137,11 @@ public class PlatformAdminController {
         if (!PLANS.contains(plan)) bad("Unsupported plan");
         if (!BILLING_CYCLES.contains(cycle)) bad("Unsupported billing cycle");
         SubscriptionStatus status;
-        try { status = SubscriptionStatus.valueOf(input.status().trim().toUpperCase(Locale.ROOT)); }
-        catch (IllegalArgumentException ex) { throw bad("Unsupported subscription status"); }
+        try {
+            status = SubscriptionStatus.valueOf(input.status().trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw bad("Unsupported subscription status");
+        }
         Subscription subscription = subscriptions.findFirstByOrganizationIdOrderByCreatedAtDesc(id).orElseGet(Subscription::new);
         subscription.setOrganization(organization);
         subscription.setPlanType(plan);
@@ -142,9 +160,24 @@ public class PlatformAdminController {
         return subscriptionView(subscriptions.save(subscription));
     }
 
-    private OrganizationView organizationView(Organization value) { return new OrganizationView(value.getId(), value.getOrganizationName(), value.getOrganizationType().name(), value.getOwnerFullName(), value.getOwnerEmail(), value.getOwnerMobile(), Boolean.TRUE.equals(value.getIsActive()), value.getSubscriptionStatus().name(), value.getMaxDoctors(), doctors.countByOrganizationId(value.getId()), value.getTrialEndsAt(), value.getCreatedAt()); }
-    private DoctorView doctorView(Doctor value) { boolean enabled = users.findByDoctorId(value.getId()).map(AppUser::isActive).orElse("ACTIVE".equals(value.getStatus())); return new DoctorView(value.getId(), value.getOrganization().getId(), value.getOrganization().getOrganizationName(), value.getFullName(), value.getEmail(), value.getPhoneNumber(), value.getSpecialization(), value.getStatus(), enabled); }
-    private SubscriptionView subscriptionView(Subscription value) { return new SubscriptionView(value.getId(), value.getOrganization().getId(), value.getPlanType(), value.getBillingCycle(), value.getStatus(), value.getStartDate(), value.getEndDate(), value.getTrialEndDate(), value.getMaxDoctors(), value.getAmount(), value.getAutoRenew()); }
-    private ResponseStatusException missing() { return new ResponseStatusException(HttpStatus.NOT_FOUND, "Resource not found"); }
-    private ResponseStatusException bad(String message) { return new ResponseStatusException(HttpStatus.BAD_REQUEST, message); }
+    private OrganizationView organizationView(Organization value) {
+        return new OrganizationView(value.getId(), value.getOrganizationName(), value.getOrganizationType().name(), value.getOwnerFullName(), value.getOwnerEmail(), value.getOwnerMobile(), Boolean.TRUE.equals(value.getIsActive()), value.getSubscriptionStatus().name(), value.getMaxDoctors(), doctors.countByOrganizationId(value.getId()), value.getTrialEndsAt(), value.getCreatedAt());
+    }
+
+    private DoctorView doctorView(Doctor value) {
+        boolean enabled = value.getUser() != null ? value.getUser().isActive() : "ACTIVE".equals(value.getStatus());
+        return new DoctorView(value.getUser().getId(), value.getOrganization().getId(), value.getOrganization().getOrganizationName(), value.getFullName(), value.getEmail(), value.getPhoneNumber(), value.getSpecialization(), value.getStatus(), enabled);
+    }
+
+    private SubscriptionView subscriptionView(Subscription value) {
+        return new SubscriptionView(value.getId(), value.getOrganization().getId(), value.getPlanType(), value.getBillingCycle(), value.getStatus(), value.getStartDate(), value.getEndDate(), value.getTrialEndDate(), value.getMaxDoctors(), value.getAmount(), value.getAutoRenew());
+    }
+
+    private ResponseStatusException missing() {
+        return new ResponseStatusException(HttpStatus.NOT_FOUND, "Resource not found");
+    }
+
+    private ResponseStatusException bad(String message) {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+    }
 }

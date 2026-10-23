@@ -12,7 +12,7 @@ import lombok.Data;
 public class DoctorSummary {
 	
 	
-	private Long doctorId;
+	private Long userId;
     private String doctorName;
     private String specialization;
     private String qualification;

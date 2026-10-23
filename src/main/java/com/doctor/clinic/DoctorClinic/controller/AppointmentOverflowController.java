@@ -16,6 +16,7 @@ import com.doctor.clinic.DoctorClinic.security.AuthorizationService;
 import com.doctor.clinic.DoctorClinic.security.CurrentUser;
 import com.doctor.clinic.DoctorClinic.security.PermissionCode;
 import com.doctor.clinic.DoctorClinic.serviceImpl.AppointmentOverflowService;
+import com.doctor.clinic.DoctorClinic.service.DoctorIdentityService;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -26,17 +27,19 @@ import lombok.RequiredArgsConstructor;
 public class AppointmentOverflowController {
     private final AppointmentOverflowService service;
     private final AuthorizationService authorizationService;
+    private final DoctorIdentityService doctorIdentityService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<AppointmentOverflowResponse>>> list() {
         CurrentUser user = authorizationService.requireOrganizationPermission(PermissionCode.APPOINTMENTS_VIEW, orgId());
-        Long doctorId = user.hasScope(com.doctor.clinic.DoctorClinic.model.ResourceScope.OWN_DOCTOR) ? user.doctorId() : null;
+        Long doctorId = user.hasScope(com.doctor.clinic.DoctorClinic.model.ResourceScope.OWN_DOCTOR)
+                ? doctorIdentityService.requireDoctor(user.userId(), user.organizationId()).getId() : null;
         return ResponseEntity.ok(ApiResponse.success(service.list(orgId(), doctorId)));
     }
 
     @PostMapping
     public ResponseEntity<ApiResponse<AppointmentOverflowResponse>> create(@Valid @RequestBody CreateAppointmentOverflowRequest input) {
-        authorizationService.requireDoctorPermission(PermissionCode.APPOINTMENTS_EDIT, orgId(), input.getDoctorId());
+        authorizationService.requireDoctorPermission(PermissionCode.APPOINTMENTS_EDIT, orgId(), input.getUserId());
         return ResponseEntity.ok(ApiResponse.success("Approval request created", service.create(input, orgId())));
     }
 

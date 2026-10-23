@@ -257,7 +257,7 @@ public class DoctorAvailabilityServiceImpl implements DoctorAvailabilityService 
                 created, removed);
 
         return SlotGenerationResultResponse.builder()
-                .doctorId(doctorId)
+                .userId(doctor.getUser().getId())
                 .slotsCreated(created)
                 .slotsRemoved(removed)
                 .daysProcessed(daysProcessed)
@@ -341,7 +341,7 @@ public class DoctorAvailabilityServiceImpl implements DoctorAvailabilityService 
                 .collect(Collectors.toList());
 
         return DoctorAvailabilityResponse.builder()
-                .doctorId(doctorId)
+                .userId(doctor.getUser().getId())
                 .appointmentDurationMinutes(settings != null ? settings.getAppointmentDurationMinutes()
                         : DEFAULT_APPOINTMENT_DURATION_MINUTES)
                 .maxAppointmentsPerDay(

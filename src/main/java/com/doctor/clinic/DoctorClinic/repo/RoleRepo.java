@@ -15,11 +15,16 @@ public interface RoleRepo extends JpaRepository<Role, Long> {
     Optional<Role> findWithPermissionsById(Long id);
 
     @EntityGraph(attributePaths = {"permissions", "organization"})
+    List<Role> findAllWithPermissionsByIdIn(List<Long> ids);
+
+    @EntityGraph(attributePaths = {"permissions", "organization"})
     Optional<Role> findWithPermissionsByCodeAndOrganizationIsNull(String code);
 
     List<Role> findByOrganizationIdOrOrganizationIsNullOrderBySystemRoleDescNameAsc(Long organizationId);
 
     Optional<Role> findByIdAndOrganizationId(Long id, Long organizationId);
+
+    Optional<Role> findByOrganizationIdAndCodeIgnoreCase(Long organizationId, String code);
 
     boolean existsByOrganizationIdAndCodeIgnoreCase(Long organizationId, String code);
 }

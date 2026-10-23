@@ -22,7 +22,7 @@ public record PatientHistoryResponse(
                              String attachmentMimeType, String attachmentName,
                              Boolean hasAttachment, LocalDateTime createdAt, String attachmentUrl) {}
 
-    public record MedicalReportRecord(Long messageId, Long doctorId, String doctorName,
+    public record MedicalReportRecord(Long messageId, Long userId, String doctorName,
                                       String fileName, String mimeType, LocalDateTime uploadedAt,
                                       String downloadUrl) {}
 }

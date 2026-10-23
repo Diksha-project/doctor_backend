@@ -48,12 +48,13 @@ public class AppointmentController {
 	public ResponseEntity<ApiResponse<BookAppointmentResponse>> bookAppointment(
 			@Valid @RequestBody BookAppointmentRequest request) {
 
-		log.info("Booking appointment for doctor: {} at {} {}", request.getDoctorId(), request.getAppointmentDate(),
+		log.info("Booking appointment for user: {} at {} {}", request.getUserId(), request.getAppointmentDate(),
 				request.getAppointmentTime());
 
 		try {
-			authorizationService.requireDoctorPermission(PermissionCode.APPOINTMENTS_CREATE, organizationId(), request.getDoctorId());
-			requireDoctorInOrganization(request.getDoctorId(), organizationId());
+			authorizationService.requireDoctorPermission(PermissionCode.APPOINTMENTS_CREATE, organizationId(), request.getUserId());
+			request.setDoctorId(doctorRepo.findByUserIdAndOrganizationId(request.getUserId(), organizationId())
+					.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found")).getId());
 			BookAppointmentResponse response = appointmentService.bookAppointment(request);
 			return ResponseEntity.ok(ApiResponse.success("Appointment booked successfully", response));
 		} catch (Exception e) {
@@ -69,7 +70,7 @@ public class AppointmentController {
 		try {
 			Appointment appointment = requireAppointmentInOrganization(appointmentId, organizationId());
 			authorizationService.requireDoctorPermission(PermissionCode.APPOINTMENTS_EDIT, organizationId(),
-					appointment.getDoctor() == null ? null : appointment.getDoctor().getId());
+					appointment.getDoctor() == null ? null : appointment.getDoctor().getUser().getId());
 			BookAppointmentResponse response = appointmentService.confirmPayment(appointmentId, paymentId);
 			return ResponseEntity.ok(ApiResponse.success("Payment confirmed", response));
 		} catch (Exception e) {
@@ -86,36 +87,40 @@ public class AppointmentController {
 	        authorizationService.requireDoctorPermission("CANCELLED".equalsIgnoreCase(request.getStatus())
 	                        ? PermissionCode.APPOINTMENTS_CANCEL
 	                        : PermissionCode.APPOINTMENTS_EDIT, organizationId(),
-	        		appointment.getDoctor() == null ? null : appointment.getDoctor().getId());
+	        		appointment.getDoctor() == null ? null : appointment.getDoctor().getUser().getId());
 	        return ResponseEntity.ok(appointmentService.updateAppointmentStatus(request));
 	    }
 	
 	 
-	 @GetMapping("/{doctorId}/dashboard")
-	    public ResponseEntity<AppointmentDashboardResponse> getDashboard(@PathVariable Long doctorId) {
-	        authorizationService.requireDoctorPermission(PermissionCode.APPOINTMENTS_VIEW, organizationId(), doctorId);
-	        requireDoctorInOrganization(doctorId, organizationId());
+	 @GetMapping("/{userId}/dashboard")
+	    public ResponseEntity<AppointmentDashboardResponse> getDashboard(@PathVariable Long userId) {
+	        authorizationService.requireDoctorPermission(PermissionCode.APPOINTMENTS_VIEW, organizationId(), userId);
+	        Long doctorId = doctorRepo.findByUserIdAndOrganizationId(userId, organizationId())
+	                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found")).getId();
 	        return ResponseEntity.ok(appointmentService.getAppointmentDashboard(doctorId));
 	    }
 
-	@GetMapping("/{doctorId}/dashboard/patients")
+	@GetMapping("/{userId}/dashboard/patients")
 	public ResponseEntity<DoctorPatientDashboardResponse> getPatientDashboard(
-			@PathVariable Long doctorId,
+			@PathVariable Long userId,
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
 		LocalDate dashboardDate = date == null ? LocalDate.now() : date;
-		authorizationService.requireDoctorPermission(PermissionCode.PATIENTS_VIEW, organizationId(), doctorId);
+		authorizationService.requireDoctorPermission(PermissionCode.PATIENTS_VIEW, organizationId(), userId);
+		Long doctorId = doctorRepo.findByUserIdAndOrganizationId(userId, organizationId())
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found")).getId();
 		return ResponseEntity.ok(doctorPatientDashboardService.getPatientsForDate(
 				doctorId, organizationId(), dashboardDate));
 	}
 
-	@GetMapping("/{doctorId}/list")
-	public ResponseEntity<ApiResponse<AppointmentListResponse>> listAppointments(@PathVariable Long doctorId,
+	@GetMapping("/{userId}/list")
+	public ResponseEntity<ApiResponse<AppointmentListResponse>> listAppointments(@PathVariable Long userId,
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
 			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
 			@RequestParam(required = false) String search,
 			@RequestParam(required = false) String status) {
-		authorizationService.requireOrganizationDoctorPermission(PermissionCode.APPOINTMENTS_VIEW, organizationId(), doctorId);
-		requireDoctorInOrganization(doctorId, organizationId());
+		authorizationService.requireOrganizationDoctorPermission(PermissionCode.APPOINTMENTS_VIEW, organizationId(), userId);
+		Long doctorId = doctorRepo.findByUserIdAndOrganizationId(userId, organizationId())
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Doctor not found")).getId();
 		return ResponseEntity.ok(ApiResponse.success(appointmentService.listForDoctor(doctorId, from, to, search, status)));
 	}
 

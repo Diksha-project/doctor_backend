@@ -7,7 +7,7 @@ public class ConnectRequest {
 	
 	 private String code;
 	 
-	 private Long doctorId;
+	 private Long userId;
 
 	 
 	 

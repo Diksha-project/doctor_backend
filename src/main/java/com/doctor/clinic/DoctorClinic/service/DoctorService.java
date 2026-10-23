@@ -16,9 +16,9 @@ public interface DoctorService {
 
 	Map<String, Object> activateNumber(WhatsAppBusinessActivateRequest request);
 
-	DoctorResponse getDoctorDetailsByID(@Valid Long doctorid);
+	DoctorResponse getDoctorDetails(Long userId, Long organizationId);
 
-	DoctorResponse updateBasicProfile(Long doctorId, Long organizationId, BasicDoctorProfileUpdateRequest request);
+	DoctorResponse updateBasicProfile(Long userId, Long organizationId, BasicDoctorProfileUpdateRequest request);
 	
 	
 

@@ -107,7 +107,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	                    request.setAttribute("email", email);
 	                    request.setAttribute("organizationId", currentUser.organizationId());
                         request.setAttribute("userId", currentUser.userId());
-                        request.setAttribute("doctorId", currentUser.doctorId());
 	                } else {
 	                    log.warn("Invalid token");
 	                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);

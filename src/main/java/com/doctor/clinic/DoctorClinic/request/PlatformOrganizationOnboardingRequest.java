@@ -1,6 +1,7 @@
 package com.doctor.clinic.DoctorClinic.request;
 
-import com.doctor.clinic.DoctorClinic.model.PlatformOrganizationKind;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -9,15 +10,13 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
+import java.math.BigDecimal;
 
 @Data
 public class PlatformOrganizationOnboardingRequest {
     @NotBlank
     @Size(max = 255)
     private String organizationName;
-
-    @NotNull
-    private PlatformOrganizationKind organizationKind;
 
     @NotBlank
     @Size(max = 100)
@@ -43,4 +42,29 @@ public class PlatformOrganizationOnboardingRequest {
     @Min(1)
     @Max(365)
     private Integer trialDays;
+
+    @NotNull
+    private Boolean superAdminIsDoctor = false;
+
+    @Size(max = 255)
+    private String doctorRegistrationNumber;
+
+    @Size(max = 255)
+    private String doctorQualification;
+
+    @Size(max = 255)
+    private String doctorSpecialization;
+
+    @Min(0)
+    @Max(100)
+    private Integer doctorExperienceYears;
+
+    @DecimalMin(value = "0.0", inclusive = true)
+    private BigDecimal doctorConsultationFee;
+
+    @AssertTrue(message = "Doctor registration number is required when the Super Admin is also a doctor")
+    public boolean isDoctorDetailsValid() {
+        return !Boolean.TRUE.equals(superAdminIsDoctor)
+                || doctorRegistrationNumber != null && !doctorRegistrationNumber.isBlank();
+    }
 }

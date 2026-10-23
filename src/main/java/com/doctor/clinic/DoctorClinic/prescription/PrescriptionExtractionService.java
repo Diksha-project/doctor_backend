@@ -33,7 +33,7 @@ public class PrescriptionExtractionService {
     private final PatientRepo patients;
     private final AppointmentRepo appointments;
 
-    public record Request(Long doctorId, Long patientId, PrescriptionContent content) {}
+    public record Request(Long userId, Long patientId, PrescriptionContent content) {}
     public record Result(PrescriptionContent content, List<String> reviewWarnings) {}
 
     public Result extract(Request request) {
@@ -135,16 +135,16 @@ public class PrescriptionExtractionService {
     }
 
     private void validateAccess(Request request) {
-        if (request == null || request.doctorId() == null || request.patientId() == null || request.content() == null)
+        if (request == null || request.userId() == null || request.patientId() == null || request.content() == null)
             throw bad("Doctor, patient and prescription content are required");
         var user = authorization.requireOwnOrganization();
-        authorization.requireDoctorPermission("PRESCRIPTIONS:EDIT", user.organizationId(), request.doctorId());
-        doctors.findByIdAndOrganizationId(request.doctorId(), user.organizationId()).orElseThrow(this::missing);
+        authorization.requireDoctorPermission("PRESCRIPTIONS:EDIT", user.organizationId(), request.userId());
+        var doctor = doctors.findByUserIdAndOrganizationId(request.userId(), user.organizationId()).orElseThrow(this::missing);
         patients.findByIdAndOrganizationId(request.patientId(), user.organizationId()).orElseThrow(this::missing);
         authorization.requireOrganizationPermission("PATIENTS:VIEW", user.organizationId());
         if (!user.hasScope(ResourceScope.ORGANIZATION)
                 && !appointments.existsByOrganizationIdAndDoctorIdAndPatientId(
-                        user.organizationId(), request.doctorId(), request.patientId())) throw missing();
+                        user.organizationId(), doctor.getId(), request.patientId())) throw missing();
     }
 
     private void requiredMedicineWarnings(PrescriptionContent.Medication medicine, Set<String> warnings) {

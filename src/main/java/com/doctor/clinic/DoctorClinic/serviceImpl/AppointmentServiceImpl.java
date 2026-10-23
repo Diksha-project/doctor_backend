@@ -489,7 +489,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 				.totalNoShow(noShow.size()).totalPatients(todayAppointments.size()).todayEarnings(todayEarnings)
 				.build();
 
-		return AppointmentDashboardResponse.builder().doctorId(doctor.getId()).doctorName(doctor.getFullName())
+		return AppointmentDashboardResponse.builder().userId(doctor.getUser().getId()).doctorName(doctor.getFullName())
 				.doctorSpecialization(doctor.getSpecialization()).today(today).currentTime(now.toString())
 				.scheduled(scheduled).confirmed(confirmed).completed(completed).cancelled(cancelled).noShow(noShow)
 				.summary(summary).build();

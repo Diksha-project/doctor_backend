@@ -45,7 +45,7 @@ public class AppointmentOverflowService {
 
     @Transactional
     public AppointmentOverflowResponse create(CreateAppointmentOverflowRequest input, Long organizationId) {
-        Doctor doctor = doctorRepo.findByIdAndOrganizationId(input.getDoctorId(), organizationId)
+        Doctor doctor = doctorRepo.findByUserIdAndOrganizationId(input.getUserId(), organizationId)
                 .orElseThrow(BusinessException::accessDenied);
         AppointmentOverflowRequest request = new AppointmentOverflowRequest();
         request.setOrganization(doctor.getOrganization());
@@ -285,7 +285,7 @@ public class AppointmentOverflowService {
                 .mapToInt(slot -> Math.max(0, slot.getMaxAppointments() - slot.getBookedCount())).sum();
         int unresolved = (int) appointmentRepo.findByDoctorIdAndAppointmentDateAndAppointmentStatusNotIn(
                 doctorId, date, List.of("COMPLETED", "CANCELLED", "NO_SHOW")).size();
-        return AppointmentOverflowResponse.builder().id(request.getId()).doctorId(doctorId)
+        return AppointmentOverflowResponse.builder().id(request.getId()).userId(request.getDoctor().getUser().getId())
                 .doctorName(request.getDoctor().getFullName()).targetDate(date)
                 .requestedAdditionalCapacity(request.getRequestedAdditionalCapacity())
                 .approvedAdditionalCapacity(request.getApprovedAdditionalCapacity()).currentBooked(booked)

@@ -138,7 +138,7 @@ public class DoctorSlotsServiceImpl implements DoctorSlotsService {
         completedSlots.sort((a, b) -> b.getStartTime().compareTo(a.getStartTime())); // Latest first
         
         return DoctorSlotsDashboardResponse.builder()
-            .doctorId(doctor.getId())
+            .userId(doctor.getUser().getId())
             .doctorName(doctor.getFullName())
             .doctorSpecialization(doctor.getSpecialization())
             .currentDate(today)

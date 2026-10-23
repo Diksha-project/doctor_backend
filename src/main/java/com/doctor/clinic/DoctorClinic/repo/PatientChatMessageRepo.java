@@ -32,7 +32,7 @@ public interface PatientChatMessageRepo extends JpaRepository<PatientChatMessage
 
     interface MedicalReportRow {
         Long getMessageId();
-        Long getDoctorId();
+        Long getUserId();
         String getDoctorName();
         String getFileName();
         String getMimeType();
@@ -93,7 +93,7 @@ public interface PatientChatMessageRepo extends JpaRepository<PatientChatMessage
                                                                @Param("patientId") Long patientId,
                                                                @Param("organizationId") Long organizationId);
 
-    @Query("select m.id as messageId, d.id as doctorId, "
+    @Query("select m.id as messageId, d.user.id as userId, "
             + "concat(d.firstName, ' ', d.lastName) as doctorName, "
             + "m.attachmentName as fileName, m.attachmentMimeType as mimeType, m.createdAt as uploadedAt "
             + "from PatientChatMessage m join m.doctor d "

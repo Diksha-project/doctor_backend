@@ -11,7 +11,7 @@ import lombok.Data;
 @Builder
 public class DoctorResponse {
 	
-	    private Long id;
+	    private Long userId;
 	    private String firstName;
 	    private String lastName;
 	    private String registrationNumber;

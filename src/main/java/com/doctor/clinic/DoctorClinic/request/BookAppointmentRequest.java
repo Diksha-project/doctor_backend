@@ -10,7 +10,10 @@ package com.doctor.clinic.DoctorClinic.request;
 @Data
 public class BookAppointmentRequest {
 	    
-	    @NotNull(message = "Doctor ID is required")
+	    @NotNull(message = "Doctor user ID is required")
+	    private Long userId;
+
+	    @com.fasterxml.jackson.annotation.JsonIgnore
 	    private Long doctorId;
 	    
 	    @NotBlank(message = "Patient name is required")

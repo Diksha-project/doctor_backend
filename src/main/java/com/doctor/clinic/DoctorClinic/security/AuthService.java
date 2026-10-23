@@ -72,7 +72,6 @@ public class AuthService {
             .roles(currentUser.roles())
             .permissions(currentUser.permissions())
             .userId(user.getId())
-            .doctorId(user.getDoctor() == null ? null : user.getDoctor().getId())
             .organizationId(organization.getId())
             .organizationName(organization.getOrganizationName())
             .active(user.isActive())

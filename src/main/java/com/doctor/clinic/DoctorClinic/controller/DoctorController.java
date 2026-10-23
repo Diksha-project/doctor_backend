@@ -52,53 +52,54 @@ public class DoctorController {
 	private DoctorProfileChangeService profileChangeService;
 	
 	
-	@GetMapping("/{doctorId}/details")
+	@GetMapping("/{userId}/details")
 	public ResponseEntity<DoctorResponse> getDoctorDetails(
-	        @PathVariable Long doctorId) {
+	        @PathVariable Long userId) {
 
-	    DoctorResponse response = doctorService.getDoctorDetailsByID(doctorId);
-    authorizationService.requireDoctorProfileAccess(response.getOrganizationId(), doctorId);
+	    CurrentUser currentUser = currentUserService.getRequiredCurrentUser();
+	    authorizationService.requireDoctorProfileAccess(currentUser.organizationId(), userId);
+	    DoctorResponse response = doctorService.getDoctorDetails(userId, currentUser.organizationId());
 
 	    return ResponseEntity.ok(response);
 	}
 
-	@org.springframework.web.bind.annotation.PutMapping("/{doctorId}/basic-info")
-	public ResponseEntity<DoctorResponse> updateBasicInfo(@PathVariable Long doctorId,
+	@org.springframework.web.bind.annotation.PutMapping("/{userId}/basic-info")
+	public ResponseEntity<DoctorResponse> updateBasicInfo(@PathVariable Long userId,
 			@Valid @RequestBody BasicDoctorProfileUpdateRequest request) {
-		DoctorResponse current = doctorService.getDoctorDetailsByID(doctorId);
-		authorizationService.requireDoctorPermission(PermissionCode.DOCTORS_EDIT, current.getOrganizationId(), doctorId);
-		return ResponseEntity.ok(doctorService.updateBasicProfile(doctorId, current.getOrganizationId(), request));
+		CurrentUser current = currentUserService.getRequiredCurrentUser();
+		authorizationService.requireDoctorPermission(PermissionCode.DOCTORS_EDIT, current.organizationId(), userId);
+		return ResponseEntity.ok(doctorService.updateBasicProfile(userId, current.organizationId(), request));
 	}
 
-	@PostMapping("/{doctorId}/profile-change-requests")
-	public ResponseEntity<?> submitProfileChange(@PathVariable Long doctorId,
+	@PostMapping("/{userId}/profile-change-requests")
+	public ResponseEntity<?> submitProfileChange(@PathVariable Long userId,
 			@Valid @RequestBody DoctorProfileChangeRequestPayload request) {
-		DoctorResponse current = doctorService.getDoctorDetailsByID(doctorId);
-		CurrentUser user = authorizationService.requireDoctorPermission(PermissionCode.DOCTORS_EDIT, current.getOrganizationId(), doctorId);
-		return ResponseEntity.ok(profileChangeService.submit(doctorId, current.getOrganizationId(), user, request));
+		CurrentUser user = currentUserService.getRequiredCurrentUser();
+		authorizationService.requireDoctorPermission(PermissionCode.DOCTORS_EDIT, user.organizationId(), userId);
+		return ResponseEntity.ok(profileChangeService.submitByUserId(userId, user.organizationId(), user, request));
 	}
 
-	@org.springframework.web.bind.annotation.PutMapping("/{doctorId}/profile")
-	public ResponseEntity<?> updateProfileDirectly(@PathVariable Long doctorId,
+	@org.springframework.web.bind.annotation.PutMapping("/{userId}/profile")
+	public ResponseEntity<?> updateProfileDirectly(@PathVariable Long userId,
 			@Valid @RequestBody DoctorProfileChangeRequestPayload request) {
-		DoctorResponse current = doctorService.getDoctorDetailsByID(doctorId);
+		CurrentUser current = currentUserService.getRequiredCurrentUser();
 		CurrentUser user = authorizationService.requireOrganizationPermission(PermissionCode.DOCTORS_EDIT,
-				current.getOrganizationId());
+				current.organizationId());
 		if (!user.isSuperAdmin()) {
 			throw new org.springframework.web.server.ResponseStatusException(HttpStatus.FORBIDDEN,
 				"Only Super Admin can update sensitive profile fields directly");
 		}
-		profileChangeService.updateDirectly(doctorId, current.getOrganizationId(), request);
-		return ResponseEntity.ok(Map.of("success", true, "doctorId", doctorId));
+		profileChangeService.updateDirectlyByUserId(userId, current.organizationId(), request);
+		return ResponseEntity.ok(Map.of("success", true, "userId", userId));
 	}
 
 	@GetMapping("/profile-change-requests")
 	public ResponseEntity<?> listProfileChanges(
 			@org.springframework.web.bind.annotation.RequestParam(required = false) DoctorProfileChangeStatus status,
-			@org.springframework.web.bind.annotation.RequestParam(required = false) Long doctorId) {
+			@org.springframework.web.bind.annotation.RequestParam(required = false) Long userId) {
 		CurrentUser user = authorizationService.requirePermission(PermissionCode.DOCTORS_VIEW);
-		Long scopedDoctor = user.hasScope(com.doctor.clinic.DoctorClinic.model.ResourceScope.OWN_DOCTOR) ? user.doctorId() : doctorId;
-		return ResponseEntity.ok(profileChangeService.list(user.organizationId(), scopedDoctor, status));
+		Long scopedUser = user.hasScope(com.doctor.clinic.DoctorClinic.model.ResourceScope.OWN_DOCTOR) ? user.userId() : userId;
+		return ResponseEntity.ok(profileChangeService.listByUserId(user.organizationId(), scopedUser, status));
 	}
 
 	@PostMapping("/profile-change-requests/{requestId}/approve")
@@ -137,11 +138,11 @@ public class DoctorController {
 	
 	@PostMapping("/activate")
 	public ResponseEntity<Map<String, Object>> activate(@RequestBody WhatsAppBusinessActivateRequest request) {
-		System.out.println("Received activation request for doctor ID: {}"+ request.getDoctorId());
+		System.out.println("Received activation request for user ID: {}"+ request.getUserId());
         
         try {
-            DoctorResponse doctor = doctorService.getDoctorDetailsByID(request.getDoctorId());
-            authorizationService.requireDoctorPermission(PermissionCode.WHATSAPP_CONFIGURATION_EDIT, doctor.getOrganizationId(), request.getDoctorId());
+			CurrentUser current = currentUserService.getRequiredCurrentUser();
+			authorizationService.requireDoctorPermission(PermissionCode.WHATSAPP_CONFIGURATION_EDIT, current.organizationId(), request.getUserId());
             Map<String, Object> response = doctorService.activateNumber(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {

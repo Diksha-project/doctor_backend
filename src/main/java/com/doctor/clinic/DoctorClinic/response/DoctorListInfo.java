@@ -10,7 +10,7 @@ import lombok.Data;
 @Builder
 public class DoctorListInfo {
 	
-	private Long doctorId;
+	private Long userId;
     private String doctorName;
     private String specialization;
     private String qualification;

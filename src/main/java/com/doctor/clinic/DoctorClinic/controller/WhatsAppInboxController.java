@@ -17,8 +17,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.doctor.clinic.DoctorClinic.service.WhatsAppConversationService;
+import com.doctor.clinic.DoctorClinic.request.StartWhatsAppConversationRequest;
 import com.doctor.clinic.DoctorClinic.security.AuthorizationService;
 import com.doctor.clinic.DoctorClinic.security.PermissionCode;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/whatsapp")
@@ -78,15 +80,12 @@ public class WhatsAppInboxController {
     }
 
     @PostMapping("/conversations")
-    public ResponseEntity<Map<String, Object>> startConversation(@RequestBody Map<String, Object> payload) {
-        Object patientId = payload.get("patientId");
-        Object doctorId = payload.get("doctorId");
-        if (!(patientId instanceof Number) || !(doctorId instanceof Number)) {
-            throw new IllegalArgumentException("patientId and doctorId are required");
-        }
-        authorizationService.requireDoctorPermission(PermissionCode.WHATSAPP_INBOX_REPLY, currentOrganizationId(), ((Number) doctorId).longValue());
+    public ResponseEntity<Map<String, Object>> startConversation(
+            @Valid @RequestBody StartWhatsAppConversationRequest request) {
+        authorizationService.requireDoctorPermission(
+                PermissionCode.WHATSAPP_INBOX_REPLY, currentOrganizationId(), request.getUserId());
         return ResponseEntity.ok(conversationService.startConversation(
-                currentOrganizationId(), ((Number) patientId).longValue(), ((Number) doctorId).longValue()));
+                currentOrganizationId(), request.getPatientId(), request.getUserId()));
     }
 
     @PostMapping(value = "/conversations/{conversationId}/attachments", consumes = "multipart/form-data")

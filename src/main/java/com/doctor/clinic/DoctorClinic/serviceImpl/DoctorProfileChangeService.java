@@ -32,6 +32,24 @@ public class DoctorProfileChangeService {
     private final DoctorRepo doctorRepo;
     private final ObjectMapper objectMapper;
 
+    public Map<String, Object> submitByUserId(Long userId, Long organizationId, CurrentUser user,
+            DoctorProfileChangeRequestPayload payload) {
+        Doctor doctor = requireDoctorByUserId(userId, organizationId);
+        return submit(doctor.getId(), organizationId, user, payload);
+    }
+
+    public void updateDirectlyByUserId(Long userId, Long organizationId,
+            DoctorProfileChangeRequestPayload payload) {
+        Doctor doctor = requireDoctorByUserId(userId, organizationId);
+        updateDirectly(doctor.getId(), organizationId, payload);
+    }
+
+    public List<Map<String, Object>> listByUserId(Long organizationId, Long userId,
+            DoctorProfileChangeStatus status) {
+        Long doctorId = userId == null ? null : requireDoctorByUserId(userId, organizationId).getId();
+        return list(organizationId, doctorId, status);
+    }
+
     @Transactional
     public Map<String, Object> submit(Long doctorId, Long organizationId, CurrentUser user,
             DoctorProfileChangeRequestPayload payload) {
@@ -136,7 +154,7 @@ public class DoctorProfileChangeService {
         try {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("id", r.getId());
-            result.put("doctorId", r.getDoctor().getId());
+            result.put("userId", r.getDoctor().getUser().getId());
             result.put("doctorName", r.getDoctor().getFullName());
             result.put("requesterName", r.getRequesterName());
             result.put("requesterEmail", r.getRequesterEmail());
@@ -149,5 +167,10 @@ public class DoctorProfileChangeService {
             result.put("reviewedAt", r.getReviewedAt());
             return result;
         } catch (Exception e) { throw new IllegalStateException("Invalid stored profile request", e); }
+    }
+
+    private Doctor requireDoctorByUserId(Long userId, Long organizationId) {
+        return doctorRepo.findByUserIdAndOrganizationId(userId, organizationId)
+                .orElseThrow(BusinessException::accessDenied);
     }
 }

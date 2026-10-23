@@ -8,7 +8,7 @@ import lombok.Data;
 
 @Data
 public class CreateAppointmentOverflowRequest {
-    @NotNull private Long doctorId;
+    @NotNull private Long userId;
     @NotNull private LocalDate targetDate;
     @NotNull @Min(1) private Integer requestedAdditionalCapacity;
     private String reason;

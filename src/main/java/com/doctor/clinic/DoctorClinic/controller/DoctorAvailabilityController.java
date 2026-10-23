@@ -27,6 +27,7 @@ import com.doctor.clinic.DoctorClinic.response.SlotGenerationResultResponse;
 import com.doctor.clinic.DoctorClinic.security.AuthorizationService;
 import com.doctor.clinic.DoctorClinic.security.PermissionCode;
 import com.doctor.clinic.DoctorClinic.service.DoctorAvailabilityService;
+import com.doctor.clinic.DoctorClinic.service.DoctorIdentityService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,59 +40,66 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/doctor/{doctorId}/availability")
+@RequestMapping("/api/doctor/{userId}/availability")
 @RequiredArgsConstructor
 public class DoctorAvailabilityController {
 
     private final DoctorAvailabilityService doctorAvailabilityService;
     private final AuthorizationService authorizationService;
+    private final DoctorIdentityService doctorIdentityService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<DoctorAvailabilityResponse>> getAvailability(@PathVariable Long doctorId) {
-        authorizationService.requireOrganizationDoctorPermission(PermissionCode.AVAILABILITY_VIEW, organizationId(), doctorId);
+    public ResponseEntity<ApiResponse<DoctorAvailabilityResponse>> getAvailability(@PathVariable Long userId) {
+        authorizationService.requireOrganizationDoctorPermission(PermissionCode.AVAILABILITY_VIEW, organizationId(), userId);
+        Long doctorId = doctorIdentityService.requireDoctor(userId, organizationId()).getId();
         DoctorAvailabilityResponse response = doctorAvailabilityService.getAvailability(doctorId, organizationId());
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     @PutMapping("/schedule")
-    public ResponseEntity<ApiResponse<DoctorAvailabilityResponse>> updateWeeklySchedule(@PathVariable Long doctorId,
+    public ResponseEntity<ApiResponse<DoctorAvailabilityResponse>> updateWeeklySchedule(@PathVariable Long userId,
             @Valid @RequestBody UpdateWeeklyAvailabilityRequest request) {
-        authorizationService.requireOrganizationDoctorPermission(PermissionCode.AVAILABILITY_EDIT, organizationId(), doctorId);
+        authorizationService.requireOrganizationDoctorPermission(PermissionCode.AVAILABILITY_EDIT, organizationId(), userId);
+        Long doctorId = doctorIdentityService.requireDoctor(userId, organizationId()).getId();
         DoctorAvailabilityResponse response = doctorAvailabilityService.updateWeeklySchedule(doctorId,
                 organizationId(), request);
         return ResponseEntity.ok(ApiResponse.success("Weekly schedule updated", response));
     }
 
     @PutMapping("/settings")
-    public ResponseEntity<ApiResponse<DoctorAvailabilityResponse>> updateSettings(@PathVariable Long doctorId,
+    public ResponseEntity<ApiResponse<DoctorAvailabilityResponse>> updateSettings(@PathVariable Long userId,
             @Valid @RequestBody UpdateAvailabilitySettingsRequest request) {
-        authorizationService.requireOrganizationDoctorPermission(PermissionCode.AVAILABILITY_EDIT, organizationId(), doctorId);
+        authorizationService.requireOrganizationDoctorPermission(PermissionCode.AVAILABILITY_EDIT, organizationId(), userId);
+        Long doctorId = doctorIdentityService.requireDoctor(userId, organizationId()).getId();
         DoctorAvailabilityResponse response = doctorAvailabilityService.updateSettings(doctorId, organizationId(),
                 request);
         return ResponseEntity.ok(ApiResponse.success("Availability settings updated", response));
     }
 
     @PostMapping("/exceptions")
-    public ResponseEntity<ApiResponse<DoctorAvailabilityResponse>> addOrUpdateException(@PathVariable Long doctorId,
+    public ResponseEntity<ApiResponse<DoctorAvailabilityResponse>> addOrUpdateException(@PathVariable Long userId,
             @Valid @RequestBody AvailabilityExceptionRequest request) {
-        authorizationService.requireOrganizationDoctorPermission(PermissionCode.AVAILABILITY_EDIT, organizationId(), doctorId);
+        authorizationService.requireOrganizationDoctorPermission(PermissionCode.AVAILABILITY_EDIT, organizationId(), userId);
+        Long doctorId = doctorIdentityService.requireDoctor(userId, organizationId()).getId();
         DoctorAvailabilityResponse response = doctorAvailabilityService.addOrUpdateException(doctorId,
                 organizationId(), request);
         return ResponseEntity.ok(ApiResponse.success("Exception saved", response));
     }
 
     @DeleteMapping("/exceptions/{date}")
-    public ResponseEntity<ApiResponse<DoctorAvailabilityResponse>> removeException(@PathVariable Long doctorId,
+    public ResponseEntity<ApiResponse<DoctorAvailabilityResponse>> removeException(@PathVariable Long userId,
             @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        authorizationService.requireOrganizationDoctorPermission(PermissionCode.AVAILABILITY_EDIT, organizationId(), doctorId);
+        authorizationService.requireOrganizationDoctorPermission(PermissionCode.AVAILABILITY_EDIT, organizationId(), userId);
+        Long doctorId = doctorIdentityService.requireDoctor(userId, organizationId()).getId();
         DoctorAvailabilityResponse response = doctorAvailabilityService.removeException(doctorId, organizationId(),
                 date);
         return ResponseEntity.ok(ApiResponse.success("Exception removed", response));
     }
 
     @PostMapping("/regenerate-slots")
-    public ResponseEntity<ApiResponse<SlotGenerationResultResponse>> regenerateSlots(@PathVariable Long doctorId) {
-        authorizationService.requireOrganizationDoctorPermission(PermissionCode.AVAILABILITY_EDIT, organizationId(), doctorId);
+    public ResponseEntity<ApiResponse<SlotGenerationResultResponse>> regenerateSlots(@PathVariable Long userId) {
+        authorizationService.requireOrganizationDoctorPermission(PermissionCode.AVAILABILITY_EDIT, organizationId(), userId);
+        Long doctorId = doctorIdentityService.requireDoctor(userId, organizationId()).getId();
         // Re-validates org ownership before touching slots for this doctor.
         doctorAvailabilityService.getAvailability(doctorId, organizationId());
         SlotGenerationResultResponse response = doctorAvailabilityService.generateSlots(doctorId);

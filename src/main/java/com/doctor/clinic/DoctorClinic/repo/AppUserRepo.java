@@ -14,14 +14,13 @@ import com.doctor.clinic.DoctorClinic.entity.AppUser;
 
 @Repository
 public interface AppUserRepo extends JpaRepository<AppUser, Long> {
-    @EntityGraph(attributePaths = {"organization", "doctor", "userRoles", "userRoles.role", "userRoles.role.permissions"})
+    @EntityGraph(attributePaths = {"organization", "userRoles", "userRoles.role", "userRoles.role.permissions"})
     Optional<AppUser> findByEmailIgnoreCase(String email);
 
     @Query("""
             select distinct user
             from AppUser user
             join fetch user.organization
-            left join fetch user.doctor
             left join fetch user.userRoles userRole
             left join fetch userRole.role role
             left join fetch role.permissions
@@ -64,7 +63,7 @@ public interface AppUserRepo extends JpaRepository<AppUser, Long> {
             """, nativeQuery = true)
     List<Object[]> findUserRoleDetailsByUserId(@Param("userId") Long userId);
 
-    @EntityGraph(attributePaths = {"organization", "doctor", "userRoles", "userRoles.role", "userRoles.role.permissions"})
+    @EntityGraph(attributePaths = {"organization", "userRoles", "userRoles.role", "userRoles.role.permissions"})
     Optional<AppUser> findById(Long id);
 
     boolean existsByOrganizationIdAndActiveTrueAndUserRolesRoleCode(Long organizationId, String roleCode);
@@ -72,8 +71,6 @@ public interface AppUserRepo extends JpaRepository<AppUser, Long> {
     List<AppUser> findByOrganizationIdOrderByFullNameAsc(Long organizationId);
 
     Optional<AppUser> findByIdAndOrganizationId(Long id, Long organizationId);
-
-    Optional<AppUser> findByDoctorId(Long doctorId);
 
     boolean existsByEmailIgnoreCase(String email);
 }

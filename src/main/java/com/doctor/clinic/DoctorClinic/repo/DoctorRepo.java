@@ -24,6 +24,9 @@ public interface DoctorRepo extends JpaRepository<Doctor, Long> {
 	long countByOrganizationId(Long organizationId);
 
 	Optional<Doctor> findByIdAndOrganizationId(Long doctorId, Long organizationId);
+	Optional<Doctor> findByUserIdAndOrganizationId(Long userId, Long organizationId);
+	Optional<Doctor> findByUserId(Long userId);
+	Optional<Doctor> findByEmailIgnoreCaseAndOrganizationId(String email, Long organizationId);
 	
 	
 	Doctor findByEmail(String email);

@@ -8,7 +8,6 @@ import com.doctor.clinic.DoctorClinic.model.ResourceScope;
 public record CurrentUser(
         Long userId,
         Long organizationId,
-        Long doctorId,
         String email,
         String name,
         Set<String> roles,
@@ -39,5 +38,9 @@ public record CurrentUser(
 
     public boolean isPlatformAdmin() {
         return roles.stream().anyMatch(role -> "PLATFORM_ADMIN".equalsIgnoreCase(role.replace("ROLE_", "")));
+    }
+
+    public boolean isDoctor() {
+        return roles.stream().anyMatch(role -> "DOCTOR".equalsIgnoreCase(role.replace("ROLE_", "")));
     }
 }

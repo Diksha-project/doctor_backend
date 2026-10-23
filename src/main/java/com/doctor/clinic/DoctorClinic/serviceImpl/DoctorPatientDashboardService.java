@@ -51,7 +51,7 @@ public class DoctorPatientDashboardService {
                         doctorId, organizationId, date)
                 .stream().map(appointment -> mapAppointment(appointment, organizationId)).toList();
 
-        return new DoctorPatientDashboardResponse(doctor.getId(), doctor.getFullName(), organizationId, date, patients);
+        return new DoctorPatientDashboardResponse(doctor.getUser().getId(), doctor.getFullName(), organizationId, date, patients);
     }
 
     private AppointmentPatient mapAppointment(Appointment appointment, Long organizationId) {

@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SlotGenerationResultResponse {
-    private Long doctorId;
+    private Long userId;
     private int slotsCreated;
     private int slotsRemoved;
     private int daysProcessed;

@@ -9,9 +9,9 @@ import org.springframework.web.bind.annotation.*;
 public class PrescriptionController {
     private final PrescriptionService service;
     private final PrescriptionExtractionService extraction;
-    @GetMapping public Page<PrescriptionService.View> list(@RequestParam Long doctorId,
+    @GetMapping public Page<PrescriptionService.View> list(@RequestParam Long userId,
             @RequestParam(required = false) Long patientId, @RequestParam(defaultValue = "0") int page) {
-        return service.list(doctorId, patientId, page);
+        return service.list(userId, patientId, page);
     }
     @GetMapping("/{id}") public PrescriptionService.View get(@PathVariable UUID id) { return service.get(id); }
     @PostMapping public PrescriptionService.View save(@RequestBody PrescriptionService.Draft input) { return service.save(input); }

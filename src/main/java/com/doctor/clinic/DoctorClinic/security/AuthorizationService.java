@@ -37,14 +37,14 @@ public class AuthorizationService {
         return requireOrganizationPermission(permission.code(), organizationId);
     }
 
-    public CurrentUser requireDoctorPermission(String permission, Long organizationId, Long doctorId) {
+    public CurrentUser requireDoctorPermission(String permission, Long organizationId, Long doctorUserId) {
         CurrentUser user = requireOrganizationPermission(permission, organizationId);
         if (user.hasScope(ResourceScope.ORGANIZATION)) {
             return user;
         }
         if (user.hasScope(ResourceScope.OWN_DOCTOR)
-                && user.doctorId() != null
-                && user.doctorId().equals(doctorId)) {
+                && user.isDoctor()
+                && user.userId().equals(doctorUserId)) {
             return user;
         }
         throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Resource not found");
@@ -54,36 +54,36 @@ public class AuthorizationService {
         return currentUserService.getRequiredCurrentUser();
     }
 
-    public CurrentUser requireDoctorPermission(PermissionCode permission, Long organizationId, Long doctorId) {
-        return requireDoctorPermission(permission.code(), organizationId, doctorId);
+    public CurrentUser requireDoctorPermission(PermissionCode permission, Long organizationId, Long doctorUserId) {
+        return requireDoctorPermission(permission.code(), organizationId, doctorUserId);
     }
 
-    public CurrentUser requireDoctorProfileAccess(Long organizationId, Long doctorId) {
+    public CurrentUser requireDoctorProfileAccess(Long organizationId, Long doctorUserId) {
         CurrentUser user = currentUserService.getRequiredCurrentUser();
         if (organizationId == null || !organizationId.equals(user.organizationId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Resource not found");
         }
-        if (user.doctorId() != null && user.doctorId().equals(doctorId)) {
+        if (user.isDoctor() && user.userId().equals(doctorUserId)) {
             return user;
         }
-        return requireOrganizationDoctorPermission(PermissionCode.DOCTORS_VIEW, organizationId, doctorId);
+        return requireOrganizationDoctorPermission(PermissionCode.DOCTORS_VIEW, organizationId, doctorUserId);
     }
 
-    public CurrentUser requireOrganizationDoctorPermission(String permission, Long organizationId, Long doctorId) {
+    public CurrentUser requireOrganizationDoctorPermission(String permission, Long organizationId, Long doctorUserId) {
         CurrentUser user = requireOrganizationPermission(permission, organizationId);
         if (user.roles().contains("SUPER_ADMIN") || user.hasScope(ResourceScope.ORGANIZATION)) {
             return user;
         }
         if (user.hasScope(ResourceScope.OWN_DOCTOR)
-                && user.doctorId() != null
-                && user.doctorId().equals(doctorId)) {
+                && user.isDoctor()
+                && user.userId().equals(doctorUserId)) {
             return user;
         }
         throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Resource not found");
     }
 
     public CurrentUser requireOrganizationDoctorPermission(PermissionCode permission, Long organizationId,
-            Long doctorId) {
-        return requireOrganizationDoctorPermission(permission.code(), organizationId, doctorId);
+            Long doctorUserId) {
+        return requireOrganizationDoctorPermission(permission.code(), organizationId, doctorUserId);
     }
 }
