@@ -62,10 +62,24 @@ public class PrescriptionDocumentSettingsService {
         String type = Optional.ofNullable(file.getContentType()).orElse("").toLowerCase(Locale.ROOT);
         if (!Set.of("image/png", "image/jpeg", "image/webp").contains(type)) bad("Logo must be PNG, JPEG, or WebP");
         try {
-            var stored = storage.storeOrganizationLogo(user.organizationId(), file.getBytes(), type, file.getOriginalFilename());
+            byte[] bytes = file.getBytes();
             Organization org = organizations.findById(user.organizationId()).orElseThrow(this::missing);
             String previousObjectKey = org.getLogoObjectKey();
-            org.setLogoObjectKey(stored.objectKey()); org.setLogoContentType(stored.contentType()); org.setLogoFileName(stored.fileName());
+            if (storage.isConfigured()) {
+                try {
+                    var stored = storage.storeOrganizationLogo(user.organizationId(), bytes, type, file.getOriginalFilename());
+                    org.setLogoObjectKey(stored.objectKey());
+                    org.setLogoData(null);
+                } catch (RuntimeException storageFailure) {
+                    org.setLogoObjectKey(null);
+                    org.setLogoData(bytes);
+                }
+            } else {
+                org.setLogoObjectKey(null);
+                org.setLogoData(bytes);
+            }
+            org.setLogoContentType(type);
+            org.setLogoFileName(Optional.ofNullable(file.getOriginalFilename()).orElse("clinic-logo"));
             ClinicProfile result = profileOf(organizations.save(org));
             deleteLogoQuietly(previousObjectKey);
             return result;
@@ -77,7 +91,7 @@ public class PrescriptionDocumentSettingsService {
         var user = authorization.requirePermission("ORGANIZATION:EDIT");
         Organization org = organizations.findById(user.organizationId()).orElseThrow(this::missing);
         String previousObjectKey = org.getLogoObjectKey();
-        org.setLogoObjectKey(null); org.setLogoContentType(null); org.setLogoFileName(null);
+        org.setLogoObjectKey(null); org.setLogoContentType(null); org.setLogoFileName(null); org.setLogoData(null);
         ClinicProfile result = profileOf(organizations.save(org));
         deleteLogoQuietly(previousObjectKey);
         return result;
@@ -87,6 +101,9 @@ public class PrescriptionDocumentSettingsService {
     public CloudflareR2StorageService.FileContent logo() {
         var user = authorization.requirePermission("SETTINGS:VIEW");
         Organization org = organizations.findById(user.organizationId()).orElseThrow(this::missing);
+        if (org.getLogoData() != null && org.getLogoData().length > 0) {
+            return new CloudflareR2StorageService.FileContent(org.getLogoData(), org.getLogoContentType(), org.getLogoFileName());
+        }
         if (org.getLogoObjectKey() == null) throw missing();
         return storage.read(org.getLogoObjectKey(), org.getLogoContentType(), org.getLogoFileName());
     }
@@ -211,7 +228,7 @@ public class PrescriptionDocumentSettingsService {
     }
     private Long userIdOf(Long doctorId, Long organizationId) { return doctorId == null ? null : doctors.findByIdAndOrganizationId(doctorId, organizationId).orElseThrow(this::missing).getUser().getId(); }
     private TemplateView view(PrescriptionDocumentTemplate t) { return new TemplateView(t.getId(), t.getVersion(), userIdOf(t.getDoctorId(), t.getOrganizationId()), t.getName(), t.getTemplateType(), t.getStatus(), t.isDefault(), read(t.getConfiguration()), t.getUpdatedAt()); }
-    private ClinicProfile profileOf(Organization org) { return new ClinicProfile(org.getId(), org.getOrganizationName(), org.getClinicAddress(), org.getClinicPhone() == null ? org.getOwnerMobile() : org.getClinicPhone(), org.getClinicEmail() == null ? org.getOwnerEmail() : org.getClinicEmail(), org.getClinicWebsite(), org.getClinicTagline(), org.getLogoObjectKey() != null, org.getLogoObjectKey() == null ? null : "/prescription-settings/clinic/logo"); }
+    private ClinicProfile profileOf(Organization org) { boolean hasLogo = org.getLogoObjectKey() != null || (org.getLogoData() != null && org.getLogoData().length > 0); return new ClinicProfile(org.getId(), org.getOrganizationName(), org.getClinicAddress(), org.getClinicPhone() == null ? org.getOwnerMobile() : org.getClinicPhone(), org.getClinicEmail() == null ? org.getOwnerEmail() : org.getClinicEmail(), org.getClinicWebsite(), org.getClinicTagline(), hasLogo, hasLogo ? "/prescription-settings/clinic/logo" : null); }
     private String uniqueCopyName(String source) { return (source.length() > 110 ? source.substring(0, 110) : source) + " Copy"; }
     private void deleteLogoQuietly(String objectKey) { try { storage.delete(objectKey); } catch (RuntimeException ignored) { /* Do not undo a successful profile update when stale-asset cleanup fails. */ } }
     private String clean(String value, int max, boolean required, String label) { String clean = value == null ? "" : value.trim(); if (required && clean.isEmpty()) bad(label + " is required"); if (clean.length() > max) bad(label + " is too long"); if (clean.indexOf('<') >= 0 || clean.indexOf('>') >= 0) bad(label + " contains unsupported characters"); return clean; }

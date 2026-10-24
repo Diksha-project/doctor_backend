@@ -41,6 +41,10 @@ public record CurrentUser(
         return scopes.contains(scope);
     }
 
+    public boolean isOwnDoctorOnly() {
+        return hasScope(ResourceScope.OWN_DOCTOR) && !hasScope(ResourceScope.ORGANIZATION);
+    }
+
     public boolean isSuperAdmin() {
         return roles.stream().anyMatch(role -> "SUPER_ADMIN".equalsIgnoreCase(role.replace("ROLE_", "")));
     }

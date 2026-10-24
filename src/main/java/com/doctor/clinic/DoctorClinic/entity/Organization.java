@@ -140,6 +140,9 @@ public class Organization {
 	@Column(name = "logo_file_name", length = 255)
 	private String logoFileName;
 
+	@Column(name = "logo_data", columnDefinition = "BYTEA")
+	private byte[] logoData;
+
 	// Relationships
 	@OneToMany(mappedBy = "organization", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
 	@Builder.Default

@@ -98,7 +98,7 @@ public class DoctorController {
 			@org.springframework.web.bind.annotation.RequestParam(required = false) DoctorProfileChangeStatus status,
 			@org.springframework.web.bind.annotation.RequestParam(required = false) Long userId) {
 		CurrentUser user = authorizationService.requirePermission(PermissionCode.DOCTORS_VIEW);
-		Long scopedUser = user.hasScope(com.doctor.clinic.DoctorClinic.model.ResourceScope.OWN_DOCTOR) ? user.userId() : userId;
+		Long scopedUser = user.isOwnDoctorOnly() ? user.userId() : userId;
 		return ResponseEntity.ok(profileChangeService.listByUserId(user.organizationId(), scopedUser, status));
 	}
 

@@ -103,7 +103,10 @@ public class OrganizationServiceImpl implements OrganizationService {
 		LocalDate today = LocalDate.now();
 
 		// Get all doctors in this organization
-		List<Doctor> doctors = doctorRepo.findByOrganizationId(organizationId);
+		List<Doctor> doctors = doctorRepo.findByOrganizationId(organizationId).stream()
+				.filter(doctor -> "ACTIVE".equals(doctor.getStatus()))
+				.filter(doctor -> doctor.getUser() != null && doctor.getUser().isActive())
+				.toList();
 
 		// Build doctor list
 		List<DoctorListInfo> doctorList = doctors.stream().map(doctor -> buildDoctorInfo(doctor, today))

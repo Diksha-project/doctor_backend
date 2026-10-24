@@ -32,7 +32,7 @@ public class AppointmentOverflowController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<AppointmentOverflowResponse>>> list() {
         CurrentUser user = authorizationService.requireOrganizationPermission(PermissionCode.APPOINTMENTS_VIEW, orgId());
-        Long doctorId = user.hasScope(com.doctor.clinic.DoctorClinic.model.ResourceScope.OWN_DOCTOR)
+        Long doctorId = user.isOwnDoctorOnly()
                 ? doctorIdentityService.requireDoctor(user.userId(), user.organizationId()).getId() : null;
         return ResponseEntity.ok(ApiResponse.success(service.list(orgId(), doctorId)));
     }

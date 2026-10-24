@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.annotation.Transactional;
+import jakarta.validation.Valid;
 
 import com.doctor.clinic.DoctorClinic.entity.AppUser;
 import com.doctor.clinic.DoctorClinic.entity.Doctor;
@@ -89,7 +91,8 @@ public class RbacAdminController {
 
     @PostMapping("/users")
     @ResponseStatus(HttpStatus.CREATED)
-    public Map<String, Object> createUser(@RequestBody UserUpsertRequest request) {
+    @Transactional
+    public Map<String, Object> createUser(@Valid @RequestBody UserUpsertRequest request) {
         CurrentUser currentUser = authorizationService.requirePermission(PermissionCode.USERS_EDIT);
         if (request.getEmail() == null || request.getPassword() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email and password are required");
@@ -111,7 +114,9 @@ public class RbacAdminController {
     }
 
     @PutMapping("/users/{userId}")
-    public Map<String, Object> updateUser(@PathVariable Long userId, @RequestBody UserUpsertRequest request) {
+    @Transactional
+    public Map<String, Object> updateUser(@PathVariable Long userId,
+            @Valid @RequestBody UserUpsertRequest request) {
         CurrentUser currentUser = authorizationService.requirePermission(PermissionCode.USERS_EDIT);
         AppUser user = appUserRepo.findByIdAndOrganizationId(userId, currentUser.organizationId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
@@ -157,7 +162,6 @@ public class RbacAdminController {
     }
 
     private void assignRoles(AppUser user, List<Long> roleIds, Long organizationId) {
-        user.getUserRoles().clear();
         if (roleIds == null || roleIds.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At least one role is required");
         }
@@ -166,6 +170,9 @@ public class RbacAdminController {
         if (selectedRoles.size() != distinctRoleIds.size()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Role not found");
         }
+        user.getUserRoles().removeIf(userRole -> !distinctRoleIds.contains(userRole.getRole().getId()));
+        Map<Long, UserRole> existingAssignments = user.getUserRoles().stream()
+                .collect(java.util.stream.Collectors.toMap(userRole -> userRole.getRole().getId(), userRole -> userRole));
         for (Role role : selectedRoles) {
             if ("PLATFORM_ADMIN".equals(role.getCode())) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
@@ -174,12 +181,15 @@ public class RbacAdminController {
             if (role.getOrganization() != null && !organizationId.equals(role.getOrganization().getId())) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Role belongs to another organization");
             }
-            UserRole userRole = new UserRole();
-            userRole.setUser(user);
-            userRole.setRole(role);
+            UserRole userRole = existingAssignments.get(role.getId());
+            if (userRole == null) {
+                userRole = new UserRole();
+                userRole.setUser(user);
+                userRole.setRole(role);
+                user.getUserRoles().add(userRole);
+            }
             userRole.setScope("DOCTOR".equals(role.getCode())
                     ? ResourceScope.OWN_DOCTOR : ResourceScope.ORGANIZATION);
-            user.getUserRoles().add(userRole);
         }
     }
 
@@ -219,9 +229,15 @@ public class RbacAdminController {
     }
 
     private void syncDoctorProfile(AppUser user, UserUpsertRequest request, Long organizationId) {
-        boolean doctorRoleSelected = appUserRepo.findActiveRoleCodesByUserId(user.getId()).contains("DOCTOR");
+        boolean doctorRoleSelected = user.getUserRoles().stream()
+                .anyMatch(userRole -> userRole.getRole().isActive()
+                        && "DOCTOR".equals(userRole.getRole().getCode()));
         Doctor existing = doctorRepo.findByUserIdAndOrganizationId(user.getId(), organizationId).orElse(null);
         if (!doctorRoleSelected) {
+            if (existing != null && !"INACTIVE".equals(existing.getStatus())) {
+                existing.setStatus("INACTIVE");
+                doctorRepo.save(existing);
+            }
             return;
         }
         if (existing == null && (request.getRegistrationNumber() == null || request.getRegistrationNumber().isBlank())) {
@@ -230,14 +246,24 @@ public class RbacAdminController {
         }
 
         Doctor doctor = existing == null ? new Doctor() : existing;
+		String registrationNumber = valueOrExisting(request.getRegistrationNumber(), doctor.getRegistrationNumber());
+		String phoneNumber = valueOrExisting(request.getPhoneNumber(), doctor.getPhoneNumber());
+		if (doctorRepo.existsByRegistrationNumberAndUserIdNot(registrationNumber, user.getId())) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT,
+					"Registration number is already used by another doctor");
+		}
+		if (doctorRepo.existsByPhoneNumberAndUserIdNot(phoneNumber, user.getId())) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT,
+					"Mobile number is already used by another doctor");
+		}
         doctor.setUser(user);
         doctor.setOrganization(user.getOrganization());
         String[] name = user.getFullName().trim().split("\\s+", 2);
         doctor.setFirstName(name[0]);
         doctor.setLastName(name.length > 1 ? name[1] : null);
         doctor.setEmail(user.getEmail());
-        doctor.setRegistrationNumber(valueOrExisting(request.getRegistrationNumber(), doctor.getRegistrationNumber()));
-        doctor.setPhoneNumber(valueOrExisting(request.getPhoneNumber(), doctor.getPhoneNumber()));
+        doctor.setRegistrationNumber(registrationNumber);
+        doctor.setPhoneNumber(phoneNumber);
         if (doctor.getPhoneNumber() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Mobile number is required when assigning the Doctor role");
@@ -249,9 +275,7 @@ public class RbacAdminController {
         doctor.setConsultationFee(request.getConsultationFee() == null
                 ? (doctor.getConsultationFee() == null ? BigDecimal.ZERO : doctor.getConsultationFee())
                 : request.getConsultationFee());
-        if (doctor.getStatus() == null) {
-            doctor.setStatus("ACTIVE");
-        }
+        doctor.setStatus("ACTIVE");
         doctorRepo.save(doctor);
     }
 

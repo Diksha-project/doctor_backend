@@ -26,6 +26,8 @@ public interface DoctorRepo extends JpaRepository<Doctor, Long> {
 	Optional<Doctor> findByIdAndOrganizationId(Long doctorId, Long organizationId);
 	Optional<Doctor> findByUserIdAndOrganizationId(Long userId, Long organizationId);
 	Optional<Doctor> findByUserId(Long userId);
+	boolean existsByRegistrationNumberAndUserIdNot(String registrationNumber, Long userId);
+	boolean existsByPhoneNumberAndUserIdNot(String phoneNumber, Long userId);
 	Optional<Doctor> findByEmailIgnoreCaseAndOrganizationId(String email, Long organizationId);
 	
 	
