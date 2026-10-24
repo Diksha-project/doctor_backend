@@ -20,6 +20,15 @@ public record CurrentUser(
         scopes = scopes == null ? Set.of() : Collections.unmodifiableSet(scopes);
     }
 
+    /**
+     * Compatibility constructor for callers created before doctor identity moved to userId.
+     * The former doctorId argument is intentionally ignored.
+     */
+    public CurrentUser(Long userId, Long organizationId, Long ignoredDoctorId, String email, String name,
+            Set<String> roles, Set<String> permissions, Set<ResourceScope> scopes) {
+        this(userId, organizationId, email, name, roles, permissions, scopes);
+    }
+
     public boolean hasPermission(String permission) {
         return permissions.contains(permission);
     }

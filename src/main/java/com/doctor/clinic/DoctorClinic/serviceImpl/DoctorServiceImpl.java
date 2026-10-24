@@ -73,9 +73,9 @@ public class DoctorServiceImpl implements DoctorService {
 	public Map<String, Object> activateNumber(WhatsAppBusinessActivateRequest request) {
 
 		String authorizationCode = request.getAuthorizationCode();
-		Long userId = request.getUserId();
+		Long accountUserId = request.getUserId();
 
-		System.out.println("Activating WhatsApp for user ID: {}" + userId);
+		System.out.println("Activating WhatsApp for user ID: {}" + accountUserId);
 
 		// Step 1: Exchange authorization code for access token
 		String tokenUrl = "https://graph.facebook.com/v22.0/oauth/access_token" + "?client_id=" + appId
@@ -89,12 +89,12 @@ public class DoctorServiceImpl implements DoctorService {
 		}
 
 		String accessToken = (String) tokenResponse.get("access_token");
-		String userId = String.valueOf(tokenResponse.get("user_id"));
+		String metaBusinessUserId = String.valueOf(tokenResponse.get("user_id"));
 
-		System.out.println("Got access token for user: {}" + userId);
+		System.out.println("Got access token for Meta user: {}" + metaBusinessUserId);
 
 		// Step 2: Get phone numbers for this user
-		String phoneUrl = "https://graph.facebook.com/v22.0/" + userId + "/phone_numbers";
+		String phoneUrl = "https://graph.facebook.com/v22.0/" + metaBusinessUserId + "/phone_numbers";
 
 		Map<String, Object> phoneResponse = webClient.get().uri(phoneUrl)
 				.header("Authorization", "Bearer " + accessToken).retrieve().bodyToMono(Map.class).block();
@@ -114,7 +114,8 @@ public class DoctorServiceImpl implements DoctorService {
 		System.out.println("Phone number found: {} with ID: {}" + phoneNumber + "  " + phoneNumberId);
 
 		// Step 3: Save to database
-		Doctor doctor = doctorRepo.findByUserId(userId).orElseThrow(() -> new RuntimeException("Doctor profile not found"));
+		Doctor doctor = doctorRepo.findByUserId(accountUserId)
+				.orElseThrow(() -> new RuntimeException("Doctor profile not found"));
 
 		doctor.setWhatsappPhoneNumberId(phoneNumberId);
 		doctor.setWhatsappAccessToken(accessToken);
@@ -126,7 +127,7 @@ public class DoctorServiceImpl implements DoctorService {
 
 		// Step 4: Return response
 		return Map.of("success", true, "message", "WhatsApp number activated successfully", "phoneNumberId",
-				phoneNumberId, "phoneNumber", phoneNumber, "userId", userId);
+				phoneNumberId, "phoneNumber", phoneNumber, "userId", accountUserId);
 	}
 
 	@Override
